@@ -2,7 +2,8 @@
 (require "pict.rkt"
          "private/slide.rkt")
 (provide (all-from-out "pict.rkt")
-         (all-from-out "private/slide.rkt"))
+         scribble-slides
+         scribble-slides*)
 
 ;; ----------------------------------------
 ;; Language
