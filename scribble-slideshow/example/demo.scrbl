@@ -1,3 +1,6 @@
+;; This example demonstrates the use of "#lang scribble-slideshow", which uses
+;; Scribble's at-notation and Scribble's module-body processing rules.
+
 ;; This slideshow can be run using the `racket` command:
 ;;
 ;;   racket PATH/TO/demo.scrbl
