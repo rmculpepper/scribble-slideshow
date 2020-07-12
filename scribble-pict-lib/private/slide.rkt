@@ -21,7 +21,9 @@
 
 (define (scribble-slides . pre-parts)
   (define p (s:decode pre-parts))
-  (void (slides-from-part p no-ctx)))
+  (define-values (h mk) (slides-from-part p 0))
+  (eprintf "h = ~s\n" h)
+  (mk h no-ctx))
 
 ;; SlideContext is (cons Pict/#f Layout (Listof Pict)) -- title, layout, body picts
 (define no-ctx '(#f auto . ()))
@@ -30,39 +32,69 @@
 ;; - 'next : sub-parts successively extend parent
 ;; - 'alt : sub-parts independently extend parent
 
-(define (slides-from-part p ctx)
+;; ... -> (values Real (??? -> Void))
+;; Returns height of body plus slide-maker function.
+(define (slides-from-part p ctx-h)
   (match p
     [(s:part tag-pfx tags title-content style to-collect blocks parts)
      ;; Note: part styles are not inherited.
      (let ([istyle (add-slide-style style (current-sp-style))])
-       (define st (slide-from-part-contents title-content blocks ctx istyle))
+       (define-values (h1 mk1)
+         (slide-from-part-contents title-content blocks ctx-h istyle))
        (case (hash-ref istyle 'slide-mode #f)
          [(next)
-          (eprintf "NEXT\n~v\n" parts)
-          (for/fold ([st st]) ([p (in-list parts)])
-            (slides-from-part p st))]
-         [(alt)
-          (for/fold ([st ctx]) ([p (in-list parts)])
-            (slides-from-part p st))]
-         [else ;; #f
-          (for/fold ([st st]) ([p (in-list parts)])
-            (slides-from-part p ctx))]))]))
+          (for/fold ([h h1] [mks (list mk1)]
+                     #:result (values h (do-next (reverse mks))))
+                    ([p (in-list parts)])
+            (define-values (hp mkp) (slides-from-part p h))
+            (values hp (cons mkp mks)))]
+         [else #;(alts)
+          (for/fold ([h h1] [mks (list mk1)]
+                     #:result (values h (do-alts (reverse mks))))
+                    ([p (in-list parts)])
+            (define-values (hp mkp) (slides-from-part p ctx-h))
+            (values (max h hp) (cons mkp mks)))]
+         #;[else ;; #f
+          (for/fold ([h h1] [mks (list mk1)]
+                     #:result (values ?? (do-alts (reverse mks))))
+                    ([p (in-list parts)])
+            (define-values (hp mkp) (slides-from-part p ctx-h))
+            (values ?? (cons mkp mks)))]))]))
 
-(define (slide-from-part-contents title-content blocks ctx istyle)
-  (match-define (list* ctx-title ctx-layout ctx-prefix) ctx)
-  (define title-p
-    (match title-content
-      [(list "..") ;; !!
-       ctx-title]
-      [(or #f '()) #f]
-      [else
-       (let ([istyle (get-title-istyle istyle)])
-         (content->pict title-content istyle +inf.0))]))
-  (define layout (hash-ref istyle 'slide-layout ctx-layout))
+(define ((do-next mks) h ctx)
+  (for/fold ([ctx ctx]) ([mk (in-list mks)])
+    (mk h ctx)))
+
+(define ((do-alts mks) h ctx0)
+  (for/fold ([ctx ctx0]) ([mk (in-list mks)])
+    (mk h ctx0)))
+
+(define (slide-from-part-contents title-content blocks ctx-h istyle)
   (define body-p (flow->pict blocks istyle))
-  (define full-body (append ctx-prefix (list body-p)))
-  (apply p:slide #:title title-p #:layout layout full-body)
-  (list* title-p layout full-body))
+  (define (mk h ctx)
+    (match-define (list* ctx-title ctx-layout ctx-prefix) ctx)
+    (define title-p
+      (match title-content
+        [(list "..") ;; !!
+         ctx-title]
+        [(or #f '()) #f]
+        [else
+         (let ([istyle (get-title-istyle istyle)])
+           (content->pict title-content istyle +inf.0))]))
+    (define layout (hash-ref istyle 'slide-layout ctx-layout))
+    (eprintf "layout = ~e\n" layout)
+    (define full-body (append ctx-prefix (list body-p)))
+    (p:slide #:title title-p #:layout layout
+             (inset-to-h full-body h))
+    (list* title-p layout full-body))
+  (values (h+ ctx-h (p:pict-height body-p)) mk))
+
+(define (h+ h1 h2)
+  (+ h1 h2 (if (zero? h1) 0 (p:current-gap-size))))
+
+(define (inset-to-h ps h)
+  (define p (apply p:vc-append (p:current-gap-size) ps))
+  (p:frame (p:inset p 0 0 0 (- h (p:pict-height p)))))
 
 (define (add-slide-style s istyle)
   (match s
