@@ -6,6 +6,8 @@
          (prefix-in s: scribble/latex-properties)
          (prefix-in s: scribble/decode)
          pict)
+(provide (all-defined-out))
+#;
 (provide flow-pict
          current-sp-style
          text-post-property
@@ -34,16 +36,22 @@
 (define BLOCK-SEP 24)           ;; (current-gap-size) = 24
 (define LINE-SEP 5)             ;; (current-line-sep) = 5
 (define BASE-SIZE 32)           ;; (current-font-size) = 32
+(define TITLE-SIZE 40)          ;; from (current-titlet)
+(define TITLE-COLOR "darkred")  ;; (current-title-color) = "black" (!!)
+(define TITLE-BASE 'swiss)      ;; (current-main-font) = 'swiss
 
-;; (current-main-font) = 'swiss
-;; (current-title-color) = "black"
 ;; (current-code-font) = (bold . modern)
 
 ;; FIXME: Should 'larger, 'smaller, etc change font size (and not
 ;; affect other picts) or scale?
 
 (define base-istyle
-  `#hasheq(;; Block Styles
+  `#hasheq(;; Slide styles
+           (slide-title-color . ,TITLE-COLOR)
+           (slide-title-size  . ,TITLE-SIZE)
+           (slide-title-base  . ,TITLE-BASE)
+
+           ;; Block Styles
            (inset-to-width? . #t)
            (block-width     . ,BLOCK-WIDTH)
            (block-sep       . ,BLOCK-SEP)
@@ -487,7 +495,6 @@
     [(? pict? p) (finish p istyle #f)]
     [(? string? str)
      (define ptstyle (append (hash-ref istyle 'text-mods null) (hash-ref istyle 'text-base)))
-     ;; FIXME: add 'text-size style key?
      (finish (text str ptstyle (hash-ref istyle 'text-size)) istyle #t)]))
 
 ;; linebreak-fragments : (Listof Fragment) PositiveReal -> (Listof (Listof Pict))
