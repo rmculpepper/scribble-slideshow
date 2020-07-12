@@ -20,7 +20,9 @@
 ;; ----------------------------------------
 
 (define (scribble-slides . pre-parts)
-  (define p (s:decode pre-parts))
+  (scribble-slides* (s:decode pre-parts)))
+
+(define (scribble-slides* p)
   (define-values (h mk) (slides-from-part p #f))
   (void (mk h no-ctx)))
 
