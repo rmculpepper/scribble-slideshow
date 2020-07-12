@@ -11,7 +11,7 @@
 ;; etc.
 
 #lang scribble-slideshow
-@(require (except-in pict table)
+@(require (prefix-in p: pict)
           pict/shadow
           scribble/core
           scribble/base
@@ -100,7 +100,7 @@ cromulent), an exception is raised.}
 To apply pict functions (such as @racket[frame]) to rendered Scribble, you can
 use @racket[flow-pict] to turn a Scribble flow into a pict.
 
-@frame[
+@p:frame[
 @flow-pict[#:style 'roman]{
   @; -- Needs table!
   @racketblock[
