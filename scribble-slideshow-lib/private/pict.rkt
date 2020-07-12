@@ -19,6 +19,8 @@
 (define (hash-cons h k v) (hash-set h k (cons v (hash-ref h k null))))
 (define (hash-remove* h ks) (for/fold ([h h]) ([k (in-list ks)]) (hash-remove h k)))
 
+(define-logger scribble-slideshow)
+
 ;; ============================================================
 ;; IStyle (aka SP-Style)
 
@@ -123,7 +125,9 @@
     [("RktSymDef") (hash-set* istyle 'text-base 'modern 'color "black" 'text-mods '(bold))]
     [(hspace) (hash-set* istyle 'text-base 'modern 'keep-whitespace? #t)]
     [(#f) istyle]
-    [else (begin (when #t (eprintf "add-style: warning, ignoring: ~e\n" s)) istyle)]))
+    [else
+     (log-scribble-slideshow-warning "add-style: ignoring: ~e" s)
+     istyle]))
 
 (define (add-style-prop prop istyle)
   (match prop
@@ -141,7 +145,9 @@
     [(? s:tex-addition?) istyle]
     ['tt-chars istyle]
     [(or 'omitable 'never-indents 'decorative) istyle] ;; FIXME?
-    [_ (begin (when #t (eprintf "add-style-prop: warning, ignoring: ~e\n" prop)) istyle)]))
+    [_
+     (log-scribble-slideshow-warning "add-style-prop: ignoring: ~e" prop)
+     istyle]))
 
 (define (to-color color) color) ;; FIXME
 
@@ -178,7 +184,9 @@
     ["SCentered" (hash-set istyle 'block-halign 'center)]
     ;; ----
     [#f istyle]
-    [_ (begin (when #t (eprintf "add-style: warning, ignoring: ~e\n" s)) istyle)]))
+    [_
+     (log-scribble-slideshow-warning "add-block-style: ignoring: ~e" s)
+     istyle]))
 
 (define (add-block-style-prop prop istyle)
   (match prop
