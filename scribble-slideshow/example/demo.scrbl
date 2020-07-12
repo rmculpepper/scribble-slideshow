@@ -1,11 +1,11 @@
 ;; This slideshow can be run using the `racket` command:
 ;;
-;;   racket PATH/TO/demo.rkt
-;;   racket -l scribble-slideshow/examples/demo
+;;   racket PATH/TO/demo.scrbl
+;;   racket -l scribble-slideshow/examples/demo.scrbl
 ;;
 ;; or it can be run with the `slideshow` command:
 ;;
-;;   slideshow PATH/TO/demo.rkt
+;;   slideshow PATH/TO/demo.scrbl
 ;;
 ;; Using the slideshow command allows you to set options, render slides to PDF,
 ;; etc.
