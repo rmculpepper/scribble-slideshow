@@ -10,6 +10,9 @@
          "pict.rkt")
 (provide (all-defined-out))
 
+;; FIXME: title picts of different sizes aren't baseline-aligned,
+;; looks inconsistent.
+
 (define (hash-update* h . kfs)
   (let loop ([h h] [kfs kfs])
     (match kfs
