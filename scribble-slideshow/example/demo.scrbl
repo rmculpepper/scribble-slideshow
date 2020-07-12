@@ -120,6 +120,20 @@ use @racket[flow-pict] to turn a Scribble flow into a pict.
 ]
 
 
+@(define (mk-slides what) ;; Element -> (Listof pre-part?)
+   @list{
+     @section{Abstraction}
+
+     It is possible to abstract over sections and their associated
+     flow to create slides.
+
+     @what is great!
+     })
+
+@(mk-slides "Abstraction")
+@(mk-slides @tx-elem[(shadow-tx 5 2 "purple")]{Racket})
+
+
 @section{Tables}
 
 @tabular[#:sep @hspace[1] #:style 'centered
