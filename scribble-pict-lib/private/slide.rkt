@@ -31,7 +31,7 @@
 ;; - 'next : sub-parts successively extend parent
 ;; - 'alts : sub-parts independently extend parent
 
-;; ... -> (values Real (??? -> Void))
+;; slides-from-part : Part Nat/#f -> (values Real (Nat/#f SlideContext -> Void))
 ;; Returns height of body plus slide-maker function.
 (define (slides-from-part p ctx-h)
   (match p
