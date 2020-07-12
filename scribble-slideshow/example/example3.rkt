@@ -1,4 +1,4 @@
-#lang scribble-pict/slideshow
+#lang scribble-slideshow
 @(require (except-in pict table)
           pict/shadow
           scribble/core

@@ -1,8 +1,7 @@
 #lang at-exp racket/base
 (require (except-in pict table)
          pict/shadow
-         scribble-pict
-         scribble-pict/private/slide
+         scribble-slideshow
          scribble/core
          scribble/base
          scribble/manual

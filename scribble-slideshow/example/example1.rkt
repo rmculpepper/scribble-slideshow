@@ -2,7 +2,7 @@
 (require (except-in slideshow/base item para t tt)
          (except-in pict table)
          pict/shadow
-         scribble-pict
+         scribble-slideshow
          scribble/core
          scribble/base
          scribble/manual

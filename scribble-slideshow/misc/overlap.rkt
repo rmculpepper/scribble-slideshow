@@ -59,5 +59,5 @@
 
 (require (except-in slideshow/base item para t tt)
          (except-in pict table)
-         scribble-pict)
+         scribble-slideshow)
 |#

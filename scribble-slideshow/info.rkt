@@ -2,15 +2,15 @@
 
 ;; pkg info
 
-(define collection "scribble-pict")
-(define deps '("base" "scribble-pict-lib"))
+(define collection "scribble-slideshow")
+(define deps '("base" "scribble-slideshow-lib"))
 (define build-deps '("racket-doc" "scribble-lib"))
 (define pkg-authors '(ryanc))
 
 ;; collection info
 
-(define name "scribble-pict")
-#;(define scribblings '(("scribblings/scribble-pict.scrbl" ())))
+(define name "scribble-slideshow")
+#;(define scribblings '(("scribblings/scribble-slideshow.scrbl" ())))
 
 (define compile-omit-paths '("examples" "misc"))
 (define test-omit-paths '("examples" "misc"))
