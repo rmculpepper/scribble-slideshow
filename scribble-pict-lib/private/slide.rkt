@@ -21,26 +21,48 @@
 
 (define (scribble-slides . pre-parts)
   (define p (s:decode pre-parts))
-  (slides-from-part p))
+  (void (slides-from-part p no-ctx)))
 
-(define (slides-from-part p)
+;; SlideContext is (cons Pict/#f Layout (Listof Pict)) -- title, layout, body picts
+(define no-ctx '(#f auto . ()))
+
+;; Slide style names:
+;; - 'next : sub-parts successively extend parent
+;; - 'alt : sub-parts independently extend parent
+
+(define (slides-from-part p ctx)
   (match p
     [(s:part tag-pfx tags title-content style to-collect blocks parts)
      ;; Note: part styles are not inherited.
      (let ([istyle (add-slide-style style (current-sp-style))])
-       (slide-from-part-contents title-content blocks istyle))
-     (for-each slides-from-part parts)]))
+       (define st (slide-from-part-contents title-content blocks ctx istyle))
+       (case (hash-ref istyle 'slide-mode #f)
+         [(next)
+          (eprintf "NEXT\n~v\n" parts)
+          (for/fold ([st st]) ([p (in-list parts)])
+            (slides-from-part p st))]
+         [(alt)
+          (for/fold ([st ctx]) ([p (in-list parts)])
+            (slides-from-part p st))]
+         [else ;; #f
+          (for/fold ([st st]) ([p (in-list parts)])
+            (slides-from-part p ctx))]))]))
 
-(define (slide-from-part-contents title-content blocks istyle)
+(define (slide-from-part-contents title-content blocks ctx istyle)
+  (match-define (list* ctx-title ctx-layout ctx-prefix) ctx)
   (define title-p
-    (and title-content
-         (let ([istyle (get-title-istyle istyle)])
-           (eprintf "title istyle = ~v\n" istyle)
-           (content->pict title-content istyle +inf.0))))
+    (match title-content
+      [(list "..") ;; !!
+       ctx-title]
+      [(or #f '()) #f]
+      [else
+       (let ([istyle (get-title-istyle istyle)])
+         (content->pict title-content istyle +inf.0))]))
+  (define layout (hash-ref istyle 'slide-layout ctx-layout))
   (define body-p (flow->pict blocks istyle))
-  (p:slide #:title title-p
-           #:layout (hash-ref istyle 'slide-layout 'auto)
-           body-p))
+  (define full-body (append ctx-prefix (list body-p)))
+  (apply p:slide #:title title-p #:layout layout full-body)
+  (list* title-p layout full-body))
 
 (define (add-slide-style s istyle)
   (match s
@@ -53,13 +75,16 @@
 (define (add-slide-style-prop prop istyle)
   (match prop
     [(or 'auto 'center 'top 'tall) (hash-set istyle 'slide-layout prop)]
+    ['next (hash-set istyle 'slide-mode 'next)]
+    ['alts (hash-set istyle 'slide-mode 'alts)]
     ;; ----
     ;; standard scribble part styles seem irrelevant, ignore
     [_ istyle]))
 
 (define (remove-slide-styles istyle)
-  (hash-remove* istyle
-                '(slide-layout slide-title-color slide-title-size slide-title-base)))
+  (define keys '(slide-layout slide-mode
+                 slide-title-color slide-title-size slide-title-base))
+  (hash-remove* istyle keys))
 
 (define (get-title-istyle istyle)
   (remove-slide-styles
