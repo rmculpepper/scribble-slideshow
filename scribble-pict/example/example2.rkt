@@ -1,6 +1,5 @@
 #lang at-exp racket/base
-(require #;(except-in slideshow/base item para t tt)
-         (except-in pict table)
+(require (except-in pict table)
          pict/shadow
          scribble-pict
          scribble-pict/private/slide
@@ -69,13 +68,15 @@
          '()))
    ]
    }]
+
+ @centered[
  @frame[
  @flow-pict[#:style 'roman]{
    @racketgrammar*[
      #:literals (lambda)
      [X #, @elem{variable name}]
      [E X (lambda (X) E) (E E)]]
- }]
+ }]]
 
  @section{Tables}
 
@@ -91,4 +92,21 @@
                 (list "kinpira gobō"  "burdock")
                 (list "makizushi"     'cont)
                 (list "This line ought to run into the second column." 'cont))]
+
+ @section[#:style 'next]{An example of staging}
+
+ This slide keeps adding paragraphs...
+
+ @subsection[#:style 'alts]{..}
+
+ Here is another.
+
+ @subsubsection{..}
+
+ Whoops, I take that back. We'll go with this one instead. I like this one better.
+
+ @subsection{Staging finished}
+
+ This is the last one. Notice the title is different.
+
  }
