@@ -19,8 +19,6 @@
           scribble/core
           scribble/base
           scribble/manual
-          scribble/html-properties
-          scribble/latex-properties
           (for-label racket/base))
 
 @(begin
@@ -50,7 +48,7 @@
                'slide-title-base '(bold . swiss))))
 
 
-@title{Demo of @racketmodname[scribble-slideshow]}
+@title{Demo of @racketmodname[scribble-slideshow] language}
 
 This whole slide consists of a @italic{flow}, which contains multiple
 @tt{paragraphs}. In turn, @tt{paragraphs} consist of
@@ -105,7 +103,6 @@ use @racket[flow-pict] to turn a Scribble flow into a pict.
 
 @p:frame[
 @flow-pict[#:style 'roman]{
-  @; -- Needs table!
   @racketblock[
   (define (map f xs)
     (if (pair? xs)
