@@ -6,7 +6,8 @@
          "private/slide.rkt")
 (provide (all-from-out "pict.rkt")
          scribble-slides
-         scribble-slides*)
+         scribble-slides*
+         part/make-slides)
 
 ;; ----------------------------------------
 ;; Language

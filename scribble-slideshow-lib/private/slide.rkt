@@ -36,34 +36,42 @@
 (define no-ctx '(#f auto . ()))
 
 ;; Slide style names:
+;; - 'ignore : do not generate slides
 ;; - 'next : sub-parts successively extend parent
 ;; - 'alts : sub-parts independently extend parent
 
-;; slides-from-part : Part Nat/#f -> (values Real (Nat/#f SlideContext -> Void))
+(struct make-slides-prop (mk))
+
+;; slides-from-part : Part Nat/#f -> (values Real (Nat/#f SlideContext -> SlideContext))
 ;; Returns height of body plus slide-maker function.
 (define (slides-from-part p ctx-h)
   (match p
     [(s:part tag-pfx tags title-content style to-collect blocks parts)
      ;; Note: part styles are not inherited.
      (let ([istyle (add-slide-style style (current-sp-style))])
-       (define-values (h1 mk1)
-         (slide-from-part-contents title-content blocks ctx-h istyle))
+       (define mk0 (or (hash-ref istyle 'slide-maker #f) void))
        (define-values (h mk)
          (case (hash-ref istyle 'slide-mode #f)
+           [(ignore)
+            (values ctx-h (lambda (h ctx) ctx))]
            [(next)
+            (define-values (h1 mk1)
+              (slide-from-part-contents title-content blocks ctx-h istyle))
             (for/fold ([h h1] [mks (list mk1)]
                        #:result (values h (do-next (reverse mks))))
                       ([p (in-list parts)])
               (define-values (hp mkp) (slides-from-part p h))
               (values hp (cons mkp mks)))]
            [(alts #f)
+            (define-values (h1 mk1)
+              (slide-from-part-contents title-content blocks ctx-h istyle))
             (for/fold ([h h1] [mks (list mk1)]
                        #:result (values h (do-alts (reverse mks))))
                       ([p (in-list parts)])
               (define-values (hp mkp) (slides-from-part p ctx-h))
               (values (h-max h hp) (cons mkp mks)))]))
-       (cond [ctx-h (values h mk)]
-             [else (values #f (lambda (_h ctx) (mk h ctx)))]))]))
+       (cond [ctx-h (values h (lambda (h ctx) (mk0) (mk h ctx)))]
+             [else (values #f (lambda (_h ctx) (mk0) (mk h ctx)))]))]))
 
 (define ((do-next mks) h ctx)
   (for/fold ([ctx ctx]) ([mk (in-list mks)])
@@ -114,6 +122,8 @@
     [(or 'auto 'center 'top 'tall) (hash-set istyle 'slide-layout prop)]
     ['next (hash-set istyle 'slide-mode 'next)]
     ['alts (hash-set istyle 'slide-mode 'alts)]
+    ['ignore (hash-set istyle 'slide-mode 'ignore)]
+    [(make-slides-prop mk) (hash-set istyle 'slide-maker mk)]
     ;; ----
     ;; standard scribble part styles seem irrelevant, ignore
     [_ istyle]))
@@ -130,3 +140,7 @@
                   'color (lambda (v) (hash-ref istyle 'slide-title-color v))
                   'text-size (lambda (v) (hash-ref istyle 'slide-title-size v))
                   'text-base (lambda (v) (hash-ref istyle 'slide-title-base v))))))
+
+(define (part/make-slides mk)
+  (define s (s:style #f (list 'ignore (make-slides-prop mk))))
+  (s:part #f null #f s null null null))
