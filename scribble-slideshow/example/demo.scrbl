@@ -15,6 +15,7 @@
 
 #lang scribble-slideshow
 @(require (prefix-in p: pict)
+          (only-in slideshow [slide s:slide])
           pict/shadow
           scribble/core
           scribble/base
@@ -155,6 +156,18 @@ use @racket[flow-pict] to turn a Scribble flow into a pict.
 @; (roughly like slideshow's 'next and 'alts commands).
 
 @include-section["demo-staging.scrbl"]
+
+
+@(part/make-slides
+  (lambda ()
+   (s:slide
+    @flow-pict{
+
+    Use @racket[part/make-slides] to wrap a slide-emitting function as
+    a Scribble @emph{part}. Any slides produced by the function are
+    inserted at the location of the resulting part.
+
+    })))
 
 
 @section[#:style 'tall]{Layout}
