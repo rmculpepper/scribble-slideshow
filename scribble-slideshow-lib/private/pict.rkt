@@ -105,6 +105,9 @@
   (case s
     [(italic bold subscript superscript #||# combine no-combine aligned unaligned)
      (hash-cons istyle 'text-mods s)]
+    [(emph)
+     (let ([b (hash-ref istyle 'text-mods null)])
+       (hash-set istyle 'text-mods (if (memq 'italic b) (remq 'italic b) (cons 'italic b))))]
     [(tt) (hash-set istyle 'text-base 'modern)]
     [(sf) (hash-set istyle 'text-base 'swiss)]
     [(roman) (hash-set istyle 'text-base s)]
