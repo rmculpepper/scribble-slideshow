@@ -1,8 +1,8 @@
 #lang scribble/manual
 @(require scribble/example
-          (for-label scribble/base scribble/manual
-                     scribble-slideshow
-                     pict (only-in slideshow slide)))
+          (for-label racket/base scribble-slideshow
+                     scribble/base scribble/core scribble/manual scribble/decode
+                     (only-in pict pict?) (only-in slideshow slide)))
 
 @(define (s-tech . pc)
    (apply tech #:doc '(lib "scribblings/scribble/scribble.scrbl") pc))
@@ -55,6 +55,14 @@ additional slide generated for each section, sub-section, etc.
 
 The style of each @racket[part] can be used to control a slide's layout and
 staging. See the extended examples for more details.
+}
+
+@defproc[(part/make-slides [proc (-> void?)]) part?]{
+
+Creates a @s-tech{part} wrapping a procedure. The procedure is run for
+effect when the part is processed by @racket[scribble-slides] or its
+equivalent; it should call @racket[slide] or similar functions to emit
+slides for that part of the document.
 }
 
 
