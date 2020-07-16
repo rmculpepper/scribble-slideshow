@@ -8,7 +8,7 @@
          (prefix-in s: scribble/html-properties)
          (prefix-in s: scribble/latex-properties)
          (prefix-in s: scribble/decode)
-         pict)
+         pict pict/convert)
 (provide (all-defined-out))
 
 (define (hash-cons h k v) (hash-set h k (cons v (hash-ref h k null))))
@@ -431,8 +431,8 @@
 ;; A Content is one of
 ;; - String
 ;; - Symbol in '(mdash ndash ldquo lsquo rdquo rsquo larr rarr prime)
-;; - convertible? to 'text or ???
 ;; - (element Style Content)
+;; - Pict or PictConvertible
 ;; - (Listof Content)
 
 (define (content->pict content istyle width)
@@ -474,6 +474,7 @@
        (loop content acc (add-style style istyle))]
       [(s:delayed-element _ _ plain) (loop (plain) acc istyle)]
       [(s:part-relative-element _ _ plain) (loop (plain) acc istyle)]
+      [(? pict-convertible?) (loop (pict-convert content) acc istyle)]
       [(? list? content)
        (for/fold ([acc acc]) ([part (in-list content)])
          (loop part acc istyle))]
