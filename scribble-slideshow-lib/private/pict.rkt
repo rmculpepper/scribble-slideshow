@@ -444,8 +444,7 @@
   (define fs1 (content->rfragments content istyle))
   (define fs2 (coalesce-rfragments fs1))
   (define lines (linebreak-fragments fs2 width))
-  (apply vl-append (get-line-sep istyle)
-         (for/list ([line (in-list lines)]) (apply hbl-append 0 line))))
+  (apply vl-append (get-line-sep istyle) lines))
 
 ;; Linebreaking algorithm:
 ;;
@@ -492,13 +491,22 @@
   ;;(define (mark p) (frame p #:color "lightblue"))
   (define (outer-loop fs outer-acc)
     (match fs
-      [(cons (and f (fragment _ #t)) fs)
-       (outer-loop fs (cons f outer-acc))]
+      [(cons (and f (fragment p #t)) fs)
+       (ws-loop fs (list p) outer-acc)]
       [(cons (and f (fragment p #f)) fs)
        (inner-loop fs (list p) outer-acc)]
       ['()
        outer-acc]))
+  (define (ws-loop fs ws-acc outer-acc)
+    (define (combine-ws ps) (mark (apply hbl-append 0 ps)))
+    (define (mark p) p #;(frame p #:color "gray"))
+    (match fs
+      [(cons (fragment p #t) fs)
+       (ws-loop fs (cons p ws-acc) outer-acc)]
+      [_ (outer-loop fs (cons (fragment (combine-ws ws-acc) #t) outer-acc))]))
   (define (inner-loop fs inner-acc outer-acc)
+    (define (combine-inner ps) (mark (apply hbl-append 0 ps)))
+    (define (mark p) p #;(frame p #:color "lightblue"))
     (match fs
       [(cons (fragment p #f) fs)
        (inner-loop fs (cons p inner-acc) outer-acc)]
@@ -545,28 +553,30 @@
      (define ptstyle (append (hash-ref istyle 'text-mods null) (hash-ref istyle 'text-base)))
      (finish (text str ptstyle (hash-ref istyle 'text-size)) istyle #t)]))
 
-;; linebreak-fragments : (Listof Fragment) PositiveReal -> (Listof (Listof Pict))
-(define (linebreak-fragments fragments width)
-  (define (loop frags) ;; -> (Listof (Listof Pict))
-    (cond [(null? frags) null]
-          [else (let*-values ([(frags*) (dropf frags fragment-ws?)]
-                              [(line rest-frags) (lineloop frags* null 0)])
-                  (cons line (loop rest-frags)))]))
-  (define (lineloop frags racc accw) ;; -> (Listof Pict) (Listof Fragments)
-    (define (return-line [frags frags] [racc racc])
-      ;; FIXME: drop picts from whitespace fragments from racc before reverse!
-      (values (reverse racc) frags))
-    (match frags
-      ['() (return-line)]
-      [(cons frag1 frags2)
-       (define p1 (fragment-pict frag1))
-       (define w1 (pict-width p1))
-       (cond [(<= (+ accw w1) width)
-              (lineloop frags2 (cons p1 racc) (+ accw w1))]
-             [(zero? accw) ;; overflows, but already on its own line
-              (return-line frags2 (cons p1 racc))]
-             [else (return-line)])]))
-  (loop fragments))
+;; linebreak-fragments : (Listof Fragment) PositiveReal -> (Listof Pict)
+(define (linebreak-fragments fs width)
+  (define (outer-loop fs outer-acc)
+    (match fs
+      ['() (reverse outer-acc)]
+      [(cons (fragment _ #t) fs)
+       (outer-loop fs outer-acc)]
+      [fs ;; starts with non-ws fragment
+       (inner-loop fs null 0 #f outer-acc)]))
+  (define (inner-loop fs0 acc accw wsw outer-acc)
+    (define (line)
+      (let ([acc (if wsw (cdr acc) acc)])
+        (apply hbl-append 0 (reverse acc))))
+    (match fs0
+      [(cons (fragment p ws?) fs)
+       (define pw (pict-width p))
+       (cond [(or (<= (+ accw pw) width) ;; line still has space
+                  (and (null? acc) (not ws?))) ;; too long, but can't break
+              (inner-loop fs (cons p acc) (+ accw pw) (if ws? pw #f) outer-acc)]
+             [else
+              (outer-loop fs0 (cons (line) outer-acc))])]
+      ['()
+       (outer-loop null (cons (line) outer-acc))]))
+  (outer-loop fs null))
 
 (define (string->segments s)
   ;; A Segment is a String that contains either all whitespace or no whitespace chars.
