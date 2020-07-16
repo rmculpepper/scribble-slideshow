@@ -441,41 +441,69 @@
 ;; - (Listof Content)
 
 (define (content->pict content istyle width)
-  (define fragments (content->fragments content istyle))
-  (define lines (linebreak-fragments fragments width))
+  (define fs1 (content->rfragments content istyle))
+  (define fs2 (coalesce-rfragments fs1))
+  (define lines (linebreak-fragments fs2 width))
   (apply vl-append (get-line-sep istyle)
          (for/list ([line (in-list lines)]) (apply hbl-append 0 line))))
 
-;; A Fragment is (fragment Pict Boolean IStyle), where a pict
-;; originating from a string either contains no whitespace or only
-;; whitespace.
-(struct fragment (pict str ws? istyle) #:prefab)
+;; Linebreaking algorithm:
+;;
+;; 1. Split strings into atomic fragments. A string fragment is either
+;; all whitespace or whitespace-free.
+;;
+;; 2. Coalesce unbreakable sequences of fragments. A sequence of
+;; fragments can be broken only before or after whitespace
+;; fragment. FIXME: could add more breaking options, but easy to add
+;; whitespace, so why bother?
+;;
+;; 3. Pack lines using unbreakable sequences.
 
-;; FIXME: Start with laxer invariant: fragment never starts or ends
-;; with whitespace; then only break if necessary.
+;; A Fragment is (fragment Pict Boolean), where a pict originating
+;; from a string either contains no whitespace or only whitespace.
+(struct fragment (pict ws?) #:prefab)
 
-;; content->fragments : Content IStyle -> (Listof Fragment)
-(define (content->fragments content istyle)
-  (match content
-    [(? string?)
-     (for/list ([seg (in-list (string->segments (regexp-replace* "\n" content " ")))])
-       (define p (base-content->pict seg istyle))
-       (define ws? (and (regexp-match? #px"^\\s*$" seg)
-                        (not (hash-ref istyle 'keep-whitespace? #f))))
-       (fragment p seg ws? istyle))]
-    [(? symbol? s) (content->fragments (list (content-symbol->string s)) istyle)]
-    [(? pict? p) (list (fragment (base-content->pict p istyle) #f #f istyle))]
-    [(s:element style content)
-     (content->fragments content (add-style style istyle))]
-    [(s:delayed-element _ _ plain)
-     (content->fragments (plain) istyle)]
-    [(s:part-relative-element _ _ plain)
-     (content->fragments (plain) istyle)]
-    [(? list?)
-     (apply append
-            (for/list ([part (in-list content)])
-              (content->fragments part istyle)))]
-    [_ (error 'content->fragments "bad content: ~e" content)]))
+;; content->rfragments : Content IStyle -> (Listof Fragment), reversed
+(define (content->rfragments content istyle)
+  (define (loop content acc istyle)
+    (match content
+      [(? string?)
+       (for/fold ([acc acc])
+                 ([seg (in-list (string->segments (regexp-replace* "\n" content " ")))])
+         (define p (base-content->pict seg istyle))
+         (define ws? (and (regexp-match? #px"^\\s*$" seg)
+                          (not (hash-ref istyle 'keep-whitespace? #f))))
+         (cons (fragment p ws?) acc))]
+      [(? symbol? s) (loop (content-symbol->string s) acc istyle)]
+      [(? pict? p) (cons (fragment (base-content->pict p istyle) #f) acc)]
+      [(s:element style content)
+       (loop content acc (add-style style istyle))]
+      [(s:delayed-element _ _ plain) (loop (plain) acc istyle)]
+      [(s:part-relative-element _ _ plain) (loop (plain) acc istyle)]
+      [(? list? content)
+       (for/fold ([acc acc]) ([part (in-list content)])
+         (loop part acc istyle))]
+      [_ (error 'content->rfragments "bad content: ~e" content)]))
+  (loop content null istyle))
+
+;; coalesce-rfragments : (Listof Fragment) -> (Listof Fragment), reversed
+(define (coalesce-rfragments fs)
+  (define (combine-inner ps) (apply hbl-append 0 ps))
+  ;;(define (mark p) (frame p #:color "lightblue"))
+  (define (outer-loop fs outer-acc)
+    (match fs
+      [(cons (and f (fragment _ #t)) fs)
+       (outer-loop fs (cons f outer-acc))]
+      [(cons (and f (fragment p #f)) fs)
+       (inner-loop fs (list p) outer-acc)]
+      ['()
+       outer-acc]))
+  (define (inner-loop fs inner-acc outer-acc)
+    (match fs
+      [(cons (fragment p #f) fs)
+       (inner-loop fs (cons p inner-acc) outer-acc)]
+      [_ (outer-loop fs (cons (fragment (combine-inner inner-acc) #f) outer-acc))]))
+  (outer-loop fs null))
 
 (define (content-symbol->string sym)
   (case sym
@@ -488,23 +516,29 @@
     [else (error 'content-symbol->string "unknown symbol: ~e" sym)]))
 
 (define (base-content->pict content istyle)
+  (define (~~> v . fs) (foldl (lambda (f v) (f v)) v fs))
   (define (finish p istyle text?)
-    (let* ([p (cond [(hash-ref istyle 'color #f)
-                     => (lambda (c) (colorize p c))]
-                    [else p])]
-           [p (scale p (hash-ref istyle 'scale 1))]
-           [p (cond [(and text? (hash-ref istyle 'text-post #f))
-                     => (lambda (posts)
-                          (for/fold ([p p]) ([post (in-list (reverse posts))]) (post p)))]
-                    [else p])]
-           [p (cond [(hash-ref istyle 'elem-post #f)
-                     => (lambda (posts)
-                          (for/fold ([p p]) ([post (in-list (reverse posts))]) (post p)))]
-                    [else p])]
-           [p (cond [(hash-ref istyle 'bgcolor #f)
-                     => (lambda (c) (bg-colorize p c))]
-                    [else p])])
-      p))
+    (~~> p
+         (lambda (p)
+           (cond [(hash-ref istyle 'color #f)
+                  => (lambda (c) (colorize p c))]
+                 [else p]))
+         (lambda (p)
+           (scale p (hash-ref istyle 'scale 1)))
+         (lambda (p)
+           (cond [(and text? (hash-ref istyle 'text-post #f))
+                  => (lambda (posts)
+                       (for/fold ([p p]) ([post (in-list (reverse posts))]) (post p)))]
+                 [else p]))
+         (lambda (p)
+           (cond [(hash-ref istyle 'elem-post #f)
+                  => (lambda (posts)
+                       (for/fold ([p p]) ([post (in-list (reverse posts))]) (post p)))]
+                 [else p]))
+         (lambda (p)
+           (cond [(hash-ref istyle 'bgcolor #f)
+                  => (lambda (c) (bg-colorize p c))]
+                 [else p]))))
   (match content
     [(? pict? p) (finish p istyle #f)]
     [(? string? str)
