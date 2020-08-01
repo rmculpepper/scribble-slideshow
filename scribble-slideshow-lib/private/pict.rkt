@@ -33,6 +33,8 @@
 ;; default style definitions, mostly following slideshow defaults.
 
 (define BLOCK-WIDTH 800)        ;; (current-para-width) = 738  (!!)
+(define WIDE-BLOCK-WIDTH 990)   ;; (current-para-width) = 990 (widescreen)
+
 (define BLOCK-SEP 24)           ;; (current-gap-size) = 24
 (define LINE-SEP 5)             ;; (current-line-sep) = 5
 (define BASE-SIZE 32)           ;; (current-font-size) = 32
@@ -60,6 +62,8 @@
            (text-base       . default)
            (text-size       . ,BASE-SIZE)
            (scale           . 1)))
+
+(define wide-istyle (hash-set base-istyle 'block-width WIDE-BLOCK-WIDTH))
 
 (define current-sp-style (make-parameter base-istyle))
 (define current-istyle current-sp-style)

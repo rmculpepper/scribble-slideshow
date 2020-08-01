@@ -94,10 +94,35 @@
            (content->pict title-content istyle +inf.0))]))
     (define layout (hash-ref istyle 'slide-layout ctx-layout))
     (define full-body (append ctx-prefix (list body-p)))
-    (p:slide #:title title-p #:layout layout
-             (inset-to-h full-body h))
+    (define aspect (hash-ref istyle 'slide-aspect #f))
+    (slide* #:title title-p #:layout layout #:aspect aspect
+            (inset-to-h full-body h))
     (list* title-p layout full-body))
   (values (h+ ctx-h (p:pict-height body-p)) mk))
+
+(define (slide* #:title title-p #:layout layout #:aspect aspect body)
+  (case layout
+    [(auto center)
+     ;; slideshow/core.rkt does vertical centering by using cc-superimpose on
+     ;; {full,titleless}-page (search in core.rkt for "(if center?"). That also
+     ;; horizontally centers wrt the full screen width, taking control away from
+     ;; the slide assembler.
+     (define center?
+       (or (eq? layout 'center)
+           (< (p:pict-height body)
+              (- (p:get-client-h #:aspect aspect)
+                 (* 2 (+ (* 2 p:gap-size) p:title-h))))))
+     (define body*
+       (cond [center?
+              (define ih (max 0 (- (p:get-client-h #:aspect aspect)
+                                   (if title-p (* (+ p:title-h (* 2 p:gap-size))) 0)
+                                   (p:pict-height body))))
+              (p:inset body 0 (/ ih 2))]
+             [else body]))
+     (p:slide #:title title-p #:layout 'tall #:aspect aspect body*)]
+    [else
+     (define aspect* (case aspect [(auto!) 'auto] [(center!) 'center] [else aspect]))
+     (p:slide #:title title-p #:layout layout #:aspect aspect* body)]))
 
 (define (h-max h1 h2) (if (and h1 h2) (max h1 h2) (or h1 h2)))
 
@@ -120,6 +145,7 @@
 (define (add-slide-style-prop prop istyle)
   (match prop
     [(or 'auto 'center 'top 'tall) (hash-set istyle 'slide-layout prop)]
+    [(or 'widescreen 'fullscreen) (hash-set istyle 'slide-aspect prop)]
     ['next (hash-set istyle 'slide-mode 'next)]
     ['alts (hash-set istyle 'slide-mode 'alts)]
     ['ignore (hash-set istyle 'slide-mode 'ignore)]
