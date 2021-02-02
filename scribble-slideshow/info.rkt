@@ -3,8 +3,16 @@
 ;; pkg info
 
 (define collection "scribble-slideshow")
-(define deps '("base" "scribble-slideshow-lib"))
-(define build-deps '("racket-doc" "scribble-lib"))
+(define deps '("base"
+               "pict-lib"
+               "scribble-lib"
+               "slideshow-lib"
+               "scribble-slideshow-lib"))
+(define build-deps '("racket-doc"
+                     "at-exp-lib"
+                     "pict-doc"
+                     "slideshow-doc"
+                     "scribble-doc"))
 (define pkg-authors '(ryanc))
 
 ;; collection info
