@@ -71,6 +71,7 @@
 ;; Style properties
 (struct text-post-property (post))
 (struct elem-post-property (post))
+(struct style-transformer (f))
 
 ;; Accessors
 
@@ -145,6 +146,7 @@
      (hash-set istyle 'bgcolor (to-color color))]
     [(? s:css-addition?) istyle]
     [(? s:tex-addition?) istyle]
+    [(style-transformer f) (f istyle)]
     ['tt-chars istyle]
     [(or 'omitable 'never-indents 'decorative) istyle] ;; FIXME?
     [_
