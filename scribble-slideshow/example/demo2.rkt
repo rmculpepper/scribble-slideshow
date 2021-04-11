@@ -46,6 +46,9 @@
             'text-base 'roman
             'slide-title-base '(bold . swiss)))
 
+;; Don't run this demo as an automated test:
+(module test racket/base)
+
 ;; ============================================================
 
 ;; There are two main ways to use scribble-slideshow as a library:
