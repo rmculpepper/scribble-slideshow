@@ -68,6 +68,17 @@
 (define (layst-height l ps)
   (apply + (add-between (map p:pict-height ps) (p:current-gap-size))))
 
+(define (make-full-layer w h x y [valign 'auto] [istyle (hasheq)])
+  (make-layer* 'fullscreen w h x y valign istyle))
+
+(define (make-wide-layer w h x y [valign 'auto] [istyle (hasheq)])
+  (make-layer* 'widescreen w h x y valign istyle))
+
+(define (make-layer* aspect w h x y valign istyle)
+  (define fw (p:get-client-w #:aspect aspect))
+  (define fh (- (p:get-client-w #:aspect aspect) p:title-h (* 2 (p:current-gap-size))))
+  (layer (* fw w) (* fh h) (* fw x) (* fh y) 1 istyle valign))
+
 ;; xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 ;; Slide style names:
@@ -213,30 +224,6 @@
     [(bottom) (p:inset body 0 dh 0 0)]
     [else #;(auto) (if (< dh 0) (p:inset body 0 0 0 dh) (p:inset body 0 (/ dh 2)))]))
 
-#;
-(define (slide* #:title title-p #:layout layout #:aspect aspect body)
-  (case layout
-    [(auto center)
-     ;; slideshow/core.rkt does vertical centering by using cc-superimpose on
-     ;; {full,titleless}-page (search in core.rkt for "(if center?"). That also
-     ;; horizontally centers wrt the full screen width, taking control away from
-     ;; the slide assembler.
-     (define center?
-       (or (eq? layout 'center)
-           (< (p:pict-height body)
-              (- (p:get-client-h #:aspect aspect)
-                 (* 2 (+ (* 2 p:gap-size) p:title-h))))))
-     (define body*
-       (cond [center?
-              (define ih (max 0 (- (p:get-client-h #:aspect aspect)
-                                   (if title-p (* (+ p:title-h (* 2 p:gap-size))) 0)
-                                   (p:pict-height body))))
-              (p:inset body 0 (/ ih 2))]
-             [else body]))
-     (p:slide #:title title-p #:layout 'tall #:aspect aspect body*)]
-    [else
-     (p:slide #:title title-p #:layout layout #:aspect aspect body)]))
-
 (define (h-max h1 h2)
   (cond [(and h1 h2) (hash-union h1 h2 #:combine max)]
         [else (or h1 h2)]))
@@ -287,4 +274,4 @@
   (s:part #f null #f s null null null))
 
 (define (in-layer #:layer lay . flow)
-  (s:compound-paragraph (s:style #f lay) (s:decode-flow flow)))
+  (s:compound-paragraph (s:style #f (list lay)) (s:decode-flow flow)))

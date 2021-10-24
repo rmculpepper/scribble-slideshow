@@ -7,7 +7,10 @@
 (provide (all-from-out "pict.rkt")
          scribble-slides
          scribble-slides*
-         part/make-slides)
+         part/make-slides
+         in-layer
+         make-full-layer
+         make-wide-layer)
 
 ;; ----------------------------------------
 ;; Language

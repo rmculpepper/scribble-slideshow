@@ -46,6 +46,9 @@
                                'inset-to-width #t)))
       (p:frame (apply flow-pict pre-flow))))
 
+  (define left-layer (make-full-layer 0.28 1 0.05 0 'top))
+  (define right-layer (make-full-layer 0.6 1 0.35 0 'top))
+
    #;
    (let ()
      (local-require slideshow)
@@ -123,6 +126,22 @@ It says @bold{more} things, things that aren't said on the left.
 ]}
 
 ]
+
+@section{Two-column slides using layers}
+
+@in-layer[#:layer left-layer]{
+On the left, we have some text. It says a few things.
+}
+
+@in-layer[#:layer right-layer]{
+
+On the right, we have more text.
+
+It says @bold{more} things, things that aren't said on the left.
+
+@racketgrammar*[
+[things few-things more-things]
+]}
 
 
 @section{More text formatting}
