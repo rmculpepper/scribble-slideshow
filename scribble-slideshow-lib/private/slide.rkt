@@ -11,6 +11,7 @@
          (prefix-in s: scribble/decode)
          (prefix-in p: slideshow)
          (prefix-in p: pict)
+         (prefix-in p: ppict/pict)
          "pict.rkt")
 (provide (all-defined-out))
 
@@ -24,7 +25,10 @@
        (loop (hash-update h k f #f) kfs)]
       ['() h])))
 
-;; ----------------------------------------
+(define (hash-append h k vs)
+  (hash-set h k (append (hash-ref h k null) vs)))
+
+;; ============================================================
 
 (define (scribble-slides . pre-parts)
   (scribble-slides* (s:decode pre-parts)))
@@ -33,7 +37,8 @@
   (define-values (h mk) (slides-from-part p #f))
   (void (mk h no-ctx)))
 
-;; ----------------------------------------
+;; ============================================================
+;; Layers
 
 ;; need W for flow->pict
 ;; need placer-like to place result
@@ -46,67 +51,51 @@
 ;; - 'tall / 'top / 'full
 
 (struct layer
-  (w h        ;; NNReal
-   x y        ;; Real (top left corner)
-   z          ;; Nat
-   style      ;; StyleHash
-   valign     ;; (U 'auto 'center 'top 'bottom)
+  (placer   ;; Placer
+   z        ;; Real
+   style    ;; StyleHash, should set 'block-width
    ) #:prefab)
 
 (define (layer<? a b)
-  (let ([za (layer-z a)] [zb (layer-z b)]
-        [xa (layer-x a)] [xb (layer-x b)])
-    (or (< za zb) (and (= za zb) (< xa xb)))))
+  (let ([za (if a (layer-z a) 0)]
+        [zb (if b (layer-z b) 0)])
+    (< za zb)))
 
-;; Heights is Hasheq[Layer => Nat/#f]
-(define no-heights (hasheq))
+(define (layer-update-style lay istyle)
+  (for/fold ([istyle istyle])
+            ([(k v) (in-hash (layer-style lay))])
+    (hash-set istyle k v)))
 
-(struct slctx
-  (title   ;;
-   layout  ;; Layout
-   layers  ;; Hasheq[Layer => LayerState]
-   ) #:prefab)
+(define auto-z 1.0)
+(define auto-dz 0.000001)
+(define (next-auto-z)
+  (set! auto-z (+ auto-z auto-dz))
+  auto-z)
 
-;; LayerState = (Listof Pict)
+(define (make-layer #:placer placer
+                    #:width width
+                    #:z [z (next-auto-z)]
+                    #:style [istyle (hasheq)])
+  (let ([istyle (if width (hash-set istyle 'block-width width) istyle)])
+    (layer placer z istyle)))
 
-(define no-ctx (slctx #f #f (hasheq)))
+(define (make-full-layer rx1 rx2 ry align #:style [istyle (hasheq)])
+  (define fw (p:get-client-w #:aspect 'fullscreen))
+  (make-layer #:placer (p:coord rx1 ry align)
+              #:width (* fw (- rx2 rx1))
+              #:style istyle))
 
-(define (slctx-heights ctx)
-  (for/hasheq ([(l st) (in-hash (slctx-layers ctx))])
-    (values l (layst-height l st))))
-
-(define (layst-height l ps)
-  (apply + (add-between (map p:pict-height ps) (p:current-gap-size))))
-
-(define (make-full-layer w h x y [valign 'auto] [istyle (hasheq)])
-  (make-layer* 'fullscreen w h x y valign istyle))
-
-(define (make-wide-layer w h x y [valign 'auto] [istyle (hasheq)])
-  (make-layer* 'widescreen w h x y valign istyle))
-
-(define (make-layer* aspect w h x y valign istyle)
-  (define fw (p:get-client-w #:aspect aspect))
-  (define fh (- (p:get-client-w #:aspect aspect) p:title-h (* 2 (p:current-gap-size))))
-  (layer (* fw w) (* fh h) (* fw x) (* fh y) 1 istyle valign))
-
-;; xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-
-;; Slide style names:
-;; - 'ignore : do not generate slides
-;; - 'next : sub-parts successively extend parent
-;; - 'alts : sub-parts independently extend parent
-
-;; PRE:
-;; - was there ever title?
-;; - refpoint layer => max height
-;; - nonrefpoint layer => ??? - might care about number, size, or both!
-;; - layer => (Listof BlankPict)
-;;   - on alts, merge to longest list, max dims per element
+;; ------------------------------------------------------------
+;; Preinfo (slide rendering pass 1)
 
 (struct preinfo
   (title? ;; Boolean   -- was there ever a title?
    layers ;; Hasheq[Layer/#f => (Listof BlankPict)]
    ) #:prefab)
+
+;; Rationale: some placers care about dimensions, others care about
+;; number of picts (eg tile), some care about both (eg, cascade).
+;; FIXME: this might not be the best compromise...
 
 (define (empty-pre) (preinfo #f (hasheq)))
 
@@ -115,27 +104,40 @@
 
 (define (pre-update-layer pre lay p)
   (match-define (preinfo title? layers) pre)
-  (define bps (blank (p:pict-width p) (p:pict-height p)))
+  (define bp (p:blank (p:pict-width p) (p:pict-height p)))
   (preinfo title? (hash-append layers lay (list bp))))
 
 (define (pre-max pre1 pre2)
-  (match-define (preinfo title1? layers1) pre1)
-  (match-define (preinfo title2? layers2) pre2)
-  (define (combine ps1 ps2)
+  (match-define (preinfo title1? layers1) (or pre1 (empty-pre)))
+  (match-define (preinfo title2? layers2) (or pre2 (empty-pre)))
+  (define (combine-max ps1 ps2)
     (match* [ps1 ps2]
       [[ps1 '()] ps1]
       [['() ps2] ps2]
       [[(cons p1 ps1) (cons p2 ps2)]
        (cons (p:blank (max (p:pict-width p1) (p:pict-width p2))
                       (max (p:pict-height p1) (p:pict-height p2)))
-             (combine ps1 ps2))]))
+             (combine-max ps1 ps2))]))
   (preinfo (or title1? title2?)
-           (hash-union pre1 pre2 #:combine combine)))
+           (hash-union layers1 layers2 #:combine combine-max)))
 
-(define (hash-append h k vs)
-  (hash-set h k (append (hash-ref h k null) vs)))
+;; ------------------------------------------------------------
+;; Slide context (slide rendering pass 2)
 
-;; ----------------------------------------
+(struct slctx
+  (title   ;;
+   layout  ;; Layout
+   layers  ;; Hasheq[Layer => (Listof Pict)]
+   ) #:prefab)
+
+(define no-ctx (slctx #f #f (hasheq)))
+
+;; ------------------------------------------------------------
+
+;; Slide style names:
+;; - 'ignore : do not generate slides
+;; - 'next : sub-parts successively extend parent
+;; - 'alts : sub-parts independently extend parent
 
 ;; Assumption: aspect does not change during 'next/'alts run
 
@@ -202,103 +204,64 @@
         [(list "..") ctx-title]
         [(or #f '()) #f]
         [else (let ([istyle (get-title-istyle base-istyle)]) ;; FIXME: use slide-istyle
-                (content->pict title-content istyle +inf.0))]))
+                (let ([p (content->pict title-content istyle +inf.0)])
+                  (p:inset p 0 (- p:title-h (p:pict-height p)) 0 0)))]))
     (define layer=>picts
       (for/fold ([layer=>picts ctx-layers])
                 ([(lay body-p) (in-hash layer=>pict)])
         (hash-append layer=>picts lay (list body-p))))
-
-
-    (define-values (layer=>picts layer=>fullpict)
-      (for/fold ([layer=>picts (hasheq)] [layer=>fullpict (hasheq)])
-                ([(lay layh) (in-hash (preinfo-layers pre))])
-        (define body-p (hash-ref layer=>pict lay #f))
-        (define ctx-prefix (hash-ref ctx-layers lay null))
-        (define full-body (append ctx-prefix (if body-p (list body-p) null)))
-        (values (hash-set layer=>picts lay full-body)
-                (hash-set layer=>fullpict lay (inset-to-h full-body layh)))))
     (p:slide #:title title-p #:layout 'center #:aspect aspect
              (for/fold ([base (p:get-full-page #:aspect aspect)])
                        ([lay (in-list (sort (hash-keys layer=>picts) layer<?))])
+               (match-define (preinfo title? layers) pre)
                (define ps (hash-ref layer=>picts lay))
-               (cond [lay (add-layer lay ps pre base)]
-                     [else (add-default-layer ps pre base)])))
+               (define bps (hash-ref layers lay))
+               (define ps* (append ps (drop bps (length ps))))
+               (cond [lay (add-layer lay title? ps* base)]
+                     [else (add-default-layer title? layout aspect ps* base)])))
     (slctx title-p layout layer=>picts))
   (values new-h mk))
-
-(define (add-layer lay ps pre base)
-  (match-define (prefinfo title? layers) pre)
-  (define bps (hash-ref layers lay))
-  (define ps* (append ps (drop pbs (length ps))))
-  (apply ppict-add (ppict-go base (layer-placer lay)) ps*))
-
-(define (add-default-layer ps pre base)
-  ...)
 
 ;; split-blocks-by-layer : (Listof Block) -> Hash[Layer/#f => (Listof Block), reversed]
 (define (split-blocks-by-layer blocks)
   (define (hash-cons h k v) (hash-set h k (cons v (hash-ref h k null))))
-  (define (style-layer style)
+  (define (get-layer style)
     (for/or ([p (in-list (s:style-properties style))] #:when (layer? p)) p))
   (let loop ([h (hasheq)] [blocks blocks] [layer #f])
     (for/fold ([h h]) ([b (in-list blocks)])
       (match b
         [(s:compound-paragraph style blocks)
-         (cond [(style-layer style)
+         (cond [(get-layer style)
                 => (lambda (in-layer) (loop h blocks in-layer))]
                [else (hash-cons h layer b)])]
         [b (hash-cons h layer b)]))))
 
-(define (layer-update-style lay istyle)
-  (for/fold ([istyle (hash-set istyle 'block-width (layer-w lay))])
-            ([(k v) (in-hash (layer-style lay))])
-    (hash-set istyle k v)))
+(define (add-layer lay title? ps base)
+  (apply p:ppict-add (p:ppict-go base (layer-placer lay)) ps))
 
-(define (get-default-layer/pass2 istyle title? aspect layout)
-  (define fw (p:get-client-w #:aspect aspect))
-  (define w (get-block-width istyle))
-  (define x (/ (- fw w) 2))
-  (eprintf "x = ~s, w = ~s, fw = ~s\n" x w fw)
-  (define fh (p:get-client-h #:aspect aspect))
-  (define (title-yskip gaps)
-    (if title? (+ p:title-h (* gaps (p:current-gap-size))) 0))
-  (case layout
-    [(center) (layer fw fh x 0 0 (hasheq) 'center)]
-    [(top) (let ([y (title-yskip 2)])
-             (layer fw (- fh y) x y 0 (hasheq) 'top))]
-    [(tall) (let ([y (title-yskip 1)])
-              (layer fw (- fh y) x y 0 (hasheq) 'top))]
-    [else ;; auto
-     (cond [title? (let ([yskip (title-yskip 2)])
-                     (layer fw (- fh yskip yskip) x yskip 0 (hasheq) 'auto))]
-           [else (get-default-layer/pass2 istyle #f aspect 'center)])]))
-
-(define (inset-layer lay body)
-  (define w (layer-w lay))
-  (define h (layer-h lay))
-  (define dw (- w (p:pict-width body)))
-  (define dh (- h (p:pict-height body)))
-  (when (< dw 0) (eprintf "width overflow: ~s > ~s\n" (p:pict-width body) w))
-  (when (< dh 0) (eprintf "height overflow: ~s > ~s\n" (p:pict-height body) h))
-  (case (layer-valign lay)
-    [(center) (p:inset body 0 (/ dh 2))]
-    [(top) (p:inset body 0 0 0 dh)]
-    [(bottom) (p:inset body 0 dh 0 0)]
-    [else #;(auto) (if (< dh 0) (p:inset body 0 0 0 dh) (p:inset body 0 (/ dh 2)))]))
-
-(define (h-max h1 h2)
-  (cond [(and h1 h2) (hash-union h1 h2 #:combine max)]
-        [else (or h1 h2)]))
-
-(define (h+ h1 h2)
-  (cond [h1 (+ h1 h2 (p:current-gap-size))]
-        [else h2]))
-
-(define (inset-to-h ps h)
-  (define p (apply p:vc-append (p:current-gap-size) ps))
-  (if h (values #;p:frame (p:inset p 0 0 0 (- h (p:pict-height p)))) p))
+(define (add-default-layer title? layout aspect ps base)
+  (define gap (p:current-gap-size))
+  (define body (apply p:vc-append gap ps))
+  (define body-w (p:pict-width body))
+  (define body-h (p:pict-height body))
+  (define base-w (p:pict-width base))
+  (define base-h (p:pict-height base))
+  (define title-h p:title-h)
+  (define x (/ (- base-w body-w) 2))
+  (define y
+    (let loop ([layout layout])
+      (cond [(eq? layout 'center) (/ (- base-h body-h) 2)]
+            [(eq? layout 'top) (if title? (+ title-h gap gap) 0)]
+            [(eq? layout 'tall) (if title? (+ title-h gap) 0)]
+            ;; 'auto cases:
+            [(and title? (> (+ (/ body-h 2) (+ title-h gap gap)) (/ base-h 2)))
+             (loop 'top)]
+            [else (loop 'center)])))
+  (p:pin-over base x y body))
 
 ;; ============================================================
+
+(struct make-slides-prop (mk))
 
 (define (add-slide-style s istyle)
   (match s
@@ -307,8 +270,6 @@
     ;; ----
     ;; standard scribble part styles seem irrelevant, ignore
     [_ istyle]))
-
-(struct make-slides-prop (mk))
 
 (define (add-slide-style-prop prop istyle)
   (match prop

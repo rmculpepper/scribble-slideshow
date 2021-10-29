@@ -9,8 +9,8 @@
          scribble-slides*
          part/make-slides
          in-layer
-         make-full-layer
-         make-wide-layer)
+         make-layer
+         make-full-layer)
 
 ;; ----------------------------------------
 ;; Language
