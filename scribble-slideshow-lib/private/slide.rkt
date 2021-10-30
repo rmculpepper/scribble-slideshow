@@ -4,6 +4,7 @@
 #lang racket/base
 (require racket/match
          racket/list
+         racket/class
          racket/hash
          (prefix-in s: scribble/core)
          (prefix-in s: scribble/html-properties)
@@ -52,26 +53,36 @@
 
 (define layer<%>
   (interface ()
+    ;; type LayerPre
     get-z
     update-style ;; StyleHash -> StyleHash
-    update-pre   ;; LayerPre Pict -> LayerPre
+    update-pre   ;; LayerPre/#f Pict -> LayerPre
+    max-pre      ;; LayerPre LayerPre -> LayerPre
     ))
 
+(define (layer? v) (is-a? v layer<%>))
+
 (define layer%
-  (class object%
-    (init-field [z (next-auto-z)]   ;; Real
-                style)              ;; StyleHsh, should set 'block-width
-    (unless z (set! z (next-auto-z)))
+  (class* object% (layer<%>)
+    (init-field placer
+                [style (hasheq)]    ;; StyleHash, should set 'block-width
+                [gap (p:current-gap-size)] ;; Real
+                [aspect 'fullscreen];; Determines client area
+                [layout 'tall]      ;; Determines client area
+                [z (next-auto-z)])  ;; Real
     (super-new)
 
+    ;; type LayerPre = Real  -- height of all picts so far
+
     (define/public (get-z) z)
+    (define/public (get-gap) gap)
+    (define/public (get-placer) placer)
 
     (define/public (update-style istyle)
       (for/fold ([istyle istyle])
                 ([(k v) (in-hash style)])
         (hash-set istyle k v)))
 
-    ;; LayerPre = Real  -- height of all picts so far
     (define/public (update-pre lpre p)
       (if lpre
           (+ lpre (get-gap) (p:pict-height p))
@@ -80,47 +91,76 @@
     (define/public (max-pre lpre1 lpre2)
       (max lpre1 lpre2))
 
-    ;; place : Boolean Aspect Layout (Listof Pict) LayerPre Pict -> Pict
+    ;; place : Boolean Layout (Listof Pict) LayerPre Pict -> Pict
     ;; Result has same bounding box as base, places contents correctly
     ;; if result is centered on slide.
-    (define/public (place* title? aspect slide-layout ps lpre base)
-      (define body (combine-outer ps lpre))
-      (place title? ps lpre base)
-      (pin-over base
-                (/ (- (p:pict-width base) (p:pict-width body)) 2)
-                (+ (/ (- (p:pict-height base) (p:pict-height body)) 2)
-                   (if title? (get-title-correction slide-layout (p:pict-height body)) 0))
-                body))
+    (define/public (place title? slide-layout ps lpre base)
+      (define body (combine-outer title? ps lpre))
+      (p:pin-over base
+                  (/ (- (p:pict-width base) (p:pict-width body)) 2)
+                  (+ (/ (- (p:pict-height base) (p:pict-height body)) 2)
+                     (if title? (get-title-correction slide-layout (p:pict-height body)) 0))
+                  body))
 
     (define/public (get-title-correction slide-layout body-h)
       (let loop ([layout layout])
         (case layout
           [(center) 0]
-          [(top) (+ p:title-h (* 2 (p:current-gap-size)))]
-          [(tall) (+ p:title-h (* 1 (p:current-gap-size)))]
+          [(top) (+ p:title-h (* 2 (get-gap)))]
+          [(tall) (+ p:title-h (* 1 (get-gap)))]
           [(slide-layout) (loop slide-layout)]
-          [(auto)
-           (cond [(> (+ (/ body-h 2) (+ p:title-h (* 2 (get-gap))))) (loop 'top)]
-                 [else (loop 'center)])])))
+          [(auto) (loop (if (> (+ (/ body-h 2) (+ p:title-h (* 2 (get-gap))))) 'top 'center))]
+          [else (error 'get-title-correction "bad layout: ~e" layout)])))
 
-    ;; combine-outer : (Listof Pict) LayerPre -> Pict
+    ;; combine-outer : Boolean (Listof Pict) LayerPre -> Pict
     ;; Returns a pict that places the contents correctly if the result
-    ;; is placed at the center of the content area. (FIXME)
-    (define/public (combine-outer ps lpre)
+    ;; is placed at the center of the "client area" (rel to layout).
+    (define/public (combine-outer title? ps lpre)
       (define body (combine-inner ps lpre))
-      (ppict-do (get-outer-ppict title?) body))
+      (p:ppict-add (get-client-ppict title? (p:pict-height body)) body))
 
-    ;; get-outer-ppict : Boolean -> PPict
-    (define/public (get-outer-ppict title?)
-      ???)
+    ;; get-client-ppict : Boolean Real -> PPict
+    (define/public (get-client-ppict title? body-h)
+      (define correction (if title? (get-title-correction 'auto +inf.0) 0))
+      (p:ppict-do (p:blank (p:get-client-w #:aspect aspect)
+                           (- (p:get-client-h #:aspect aspect)
+                              (get-title-correction 'auto body-h)))
+                  #:go (get-placer)))
 
     ;; combine-inner : (Listof Pict) LayerPre -> Pict
     (define/public (combine-inner ps lpre)
-      (define p (vc-append gap ps))
-      (inset p 0 (- lpre (p:pict-height p)) 0 0))
+      (define p (apply p:vc-append gap ps))
+      (p:inset p 0 (- lpre (p:pict-height p)) 0 0))
 
     ))
 
+(define default-layer%
+  (class layer%
+    (inherit get-gap)
+    (super-new [placer #f]
+               [layout 'slide-layout]
+               [z 0]
+               [style (hasheq)])
+
+    (define ct-placer (p:coord 1/2 0 'ct #:sep (get-gap)))
+    (define cc-placer (p:coord 1/2 1/2 'cc #:sep (get-gap)))
+    (define top (new layer% (placer ct-placer) (layout 'top) (z 0)))
+    (define tall (new layer% (placer ct-placer) (layout 'tall) (z 0)))
+    (define center (new layer% (placer cc-placer) (layout 'center) (z 0)))
+
+    (define/override (place title? slide-layout ps lpre base)
+      (case slide-layout
+        [(top) (send top place title? slide-layout ps lpre base)]
+        [(tall) (send tall place title? slide-layout ps lpre base)]
+        [(center) (send center place title? slide-layout ps lpre base)]
+        ;; FIXME: auto
+        [(auto #f) (send center place title? slide-layout ps lpre base)]
+        [else (error 'default-layer%:place "bad slide-layout: ~e" slide-layout)]))
+    ))
+
+(define default-layer (new default-layer%))
+
+#;
 (define alt-layer%
   (class layer%
     (super-new)
@@ -139,9 +179,7 @@
     ))
 
 (define (layer<? a b)
-  (let ([za (if a (send a get-z) 0)]
-        [zb (if b (send b get-z) 0)])
-    (< za zb)))
+  (< (send a get-z) (send b get-z)))
 
 (define auto-z 1.0)
 (define auto-dz 0.000001)
@@ -149,6 +187,7 @@
   (set! auto-z (+ auto-z auto-dz))
   auto-z)
 
+#;
 (define (make-layer #:placer placer
                     #:width width
                     #:z [z (next-auto-z)]
@@ -156,18 +195,24 @@
   (let ([istyle (if width (hash-set istyle 'block-width width) istyle)])
     (layer placer z istyle)))
 
-(define (make-full-layer rx1 rx2 ry align #:style [istyle (hasheq)])
-  (define fw (p:get-client-w #:aspect 'fullscreen))
-  (make-layer #:placer (p:coord rx1 ry align)
-              #:width (* fw (- rx2 rx1))
-              #:style istyle))
+(define (make-layer rx1 rx2 ry align
+                    #:aspect [aspect 'fullscreen]
+                    #:layout [layout 'top]
+                    #:sep [gap (p:current-gap-size)]
+                    #:style [style (hasheq)]
+                    #:z [z (next-auto-z)])
+  (define w (* (p:get-client-w #:aspect 'fullscreen) (- rx2 rx1)))
+  (new layer%
+       (placer (p:coord rx1 ry align #:sep gap))
+       (style (hash-set style 'block-width w))
+       (gap gap) (aspect aspect) (layout layout) (z z)))
 
 ;; ------------------------------------------------------------
 ;; Preinfo (slide rendering pass 1)
 
 (struct preinfo
   (title? ;; Boolean   -- was there ever a title?
-   layers ;; Hasheq[Layer/#f => LayerPre]
+   layers ;; Hasheq[Layer => LayerPre]
    ) #:prefab)
 
 (define (empty-pre) (preinfo #f (hasheq)))
@@ -177,7 +222,7 @@
 
 (define (pre-update-layer pre lay p)
   (match-define (preinfo title? layers) pre)
-  (preinfo title? (hash-update layers lay (lambda (v) (send lay update-pre lpre p)) #f)))
+  (preinfo title? (hash-update layers lay (lambda (lpre) (send lay update-pre lpre p)) #f)))
 
 (define (pre-max pre1 pre2)
   (match-define (preinfo title1? layers1) (or pre1 (empty-pre)))
@@ -281,7 +326,7 @@
                (match-define (preinfo title? layers) pre)
                (define ps (hash-ref layer=>picts lay))
                (define lpre (hash-ref layers lay))
-               (send lay place title? aspect layout ps lpre base)))
+               (send lay place title? layout ps lpre base)))
     (slctx title-p layout layer=>picts))
   (values new-h mk))
 
@@ -290,7 +335,7 @@
   (define (hash-cons h k v) (hash-set h k (cons v (hash-ref h k null))))
   (define (get-layer style)
     (for/or ([p (in-list (s:style-properties style))] #:when (layer? p)) p))
-  (let loop ([h (hasheq)] [blocks blocks] [layer #f])
+  (let loop ([h (hasheq)] [blocks blocks] [layer default-layer])
     (for/fold ([h h]) ([b (in-list blocks)])
       (match b
         [(s:compound-paragraph style blocks)
@@ -299,9 +344,7 @@
                [else (hash-cons h layer b)])]
         [b (hash-cons h layer b)]))))
 
-(define (add-layer lay title? ps base)
-  (apply p:ppict-add (p:ppict-go base (layer-placer lay)) ps))
-
+#;
 (define (add-default-layer title? layout aspect ps base)
   (define gap (p:current-gap-size))
   (define body (apply p:vc-append gap ps))
