@@ -53,122 +53,64 @@
 
 (define layer<%>
   (interface ()
-    ;; type LayerPre
     get-z
     update-style ;; StyleHash -> StyleHash
+
+    ;; type LayerPre
     update-pre   ;; LayerPre/#f Pict -> LayerPre
     max-pre      ;; LayerPre LayerPre -> LayerPre
+
+    place        ;; Boolean Layout (Listof Pict) LayerPre Pict -> Pict
+    ;; Places the contents onto the given base, where base is a full-page pict
+    ;; for the given aspect.
     ))
 
 (define (layer? v) (is-a? v layer<%>))
 
-(define layer%
+(define layer-base%
   (class* object% (layer<%>)
-    (init-field placer
-                [style (hasheq)]    ;; StyleHash, should set 'block-width
-                [gap (p:current-gap-size)] ;; Real
-                [aspect 'fullscreen];; Determines client area
-                [layout 'tall]      ;; Determines client area
+    (init-field [style (hasheq)]    ;; StyleHash, should set 'block-width
                 [z (next-auto-z)])  ;; Real
     (super-new)
 
-    ;; type LayerPre = Real  -- height of all picts so far
-
     (define/public (get-z) z)
-    (define/public (get-gap) gap)
-    (define/public (get-placer) placer)
 
     (define/public (update-style istyle)
       (for/fold ([istyle istyle])
                 ([(k v) (in-hash style)])
         (hash-set istyle k v)))
 
-    (define/public (update-pre lpre p)
+    (abstract update-pre)
+    (abstract max-pre)
+
+    ;; ----
+    (abstract place)
+    ))
+
+(define h-layer-base%
+  (class layer-base%
+    (init-field [gap (p:current-gap-size)])
+    (super-new)
+
+    (define/public (get-gap) gap)
+
+    ;; type LayerPre = Real  -- height of all picts so far
+    (define/override (update-pre lpre p)
       (if lpre
           (+ lpre (get-gap) (p:pict-height p))
           (p:pict-height p)))
-
-    (define/public (max-pre lpre1 lpre2)
+    (define/override (max-pre lpre1 lpre2)
       (max lpre1 lpre2))
-
-    ;; place : Boolean Layout (Listof Pict) LayerPre Pict -> Pict
-    ;; Result has same bounding box as base, places contents correctly
-    ;; if result is centered on slide.
-    (define/public (place title? slide-layout ps lpre base)
-      (define body (combine-outer title? ps lpre))
-      (p:pin-over base
-                  (/ (- (p:pict-width base) (p:pict-width body)) 2)
-                  (+ (/ (- (p:pict-height base) (p:pict-height body)) 2)
-                     (if title? (get-title-correction slide-layout (p:pict-height body)) 0))
-                  body))
-
-    (define/public (get-title-correction slide-layout body-h)
-      (let loop ([layout layout])
-        (case layout
-          [(center) 0]
-          [(top) (+ p:title-h (* 2 (get-gap)))]
-          [(tall) (+ p:title-h (* 1 (get-gap)))]
-          [(slide-layout) (loop slide-layout)]
-          [(auto) (loop (if (> (+ (/ body-h 2) (+ p:title-h (* 2 (get-gap))))) 'top 'center))]
-          [else (error 'get-title-correction "bad layout: ~e" layout)])))
-
-    ;; combine-outer : Boolean (Listof Pict) LayerPre -> Pict
-    ;; Returns a pict that places the contents correctly if the result
-    ;; is placed at the center of the "client area" (rel to layout).
-    (define/public (combine-outer title? ps lpre)
-      (define body (combine-inner ps lpre))
-      (p:ppict-add (get-client-ppict title? (p:pict-height body)) body))
-
-    ;; get-client-ppict : Boolean Real -> PPict
-    (define/public (get-client-ppict title? body-h)
-      (define correction (if title? (get-title-correction 'auto +inf.0) 0))
-      (p:ppict-do (p:blank (p:get-client-w #:aspect aspect)
-                           (- (p:get-client-h #:aspect aspect)
-                              (get-title-correction 'auto body-h)))
-                  #:go (get-placer)))
-
-    ;; combine-inner : (Listof Pict) LayerPre -> Pict
-    (define/public (combine-inner ps lpre)
-      (define p (apply p:vc-append gap ps))
-      (p:inset p 0 (- lpre (p:pict-height p)) 0 0))
-
     ))
 
-(define default-layer%
-  (class layer%
-    (inherit get-gap)
-    (super-new [placer #f]
-               [layout 'slide-layout]
-               [z 0]
-               [style (hasheq)])
-
-    (define ct-placer (p:coord 1/2 0 'ct #:sep (get-gap)))
-    (define cc-placer (p:coord 1/2 1/2 'cc #:sep (get-gap)))
-    (define top (new layer% (placer ct-placer) (layout 'top) (z 0)))
-    (define tall (new layer% (placer ct-placer) (layout 'tall) (z 0)))
-    (define center (new layer% (placer cc-placer) (layout 'center) (z 0)))
-
-    (define/override (place title? slide-layout ps lpre base)
-      (case slide-layout
-        [(top) (send top place title? slide-layout ps lpre base)]
-        [(tall) (send tall place title? slide-layout ps lpre base)]
-        [(center) (send center place title? slide-layout ps lpre base)]
-        ;; FIXME: auto
-        [(auto #f) (send center place title? slide-layout ps lpre base)]
-        [else (error 'default-layer%:place "bad slide-layout: ~e" slide-layout)]))
-    ))
-
-(define default-layer (new default-layer%))
-
-#;
-(define alt-layer%
-  (class layer%
+(define ps-layer-base%
+  (class layer-base%
     (super-new)
 
-    ;; LayerPre = (Listof BlankPict)
-    (define/public (update-pre lpre p)
-      (append (or lpre null) (list p)))
-    (define/public (max-pre ps1 ps2)
+    ;; type LayerPre = (Listof BlankPict)
+    (define/override (update-pre lpre p)
+      (append (or lpre null) (list (p:blank (p:pict-width p) (p:pict-height p)))))
+    (define/override (max-pre ps1 ps2)
       (match* [ps1 ps2]
         [[ps1 '()] ps1]
         [['() ps2] ps2]
@@ -176,6 +118,82 @@
          (cons (p:blank (max (p:pict-width p1) (p:pict-width p2))
                         (max (p:pict-height p1) (p:pict-height p2)))
                (max-pre ps1 ps2))]))
+    ))
+
+(define default-layer%
+  (class h-layer-base%
+    (inherit get-gap)
+    (super-new (z 0)
+               (style (hasheq)))
+
+    (define/override (place title? slide-layout ps lpre base)
+      ;; FIXME: aspect?
+      (define elayout (get-effective-layout title? 'fullscreen slide-layout lpre))
+      (define body-p (apply p:vc-append (p:current-gap-size) ps))
+      (define body-h lpre)
+      (define body-w (p:pict-width body-p))
+      (define x (/ (- (p:pict-width base) body-w) 2))
+      (define y (get-client-y title? elayout body-h (p:pict-height base)))
+      (p:pin-over base x y body-p))
+    ))
+
+(define (get-effective-layout title? aspect layout body-h)
+  (cond [(memq layout '(auto #f))
+         (cond [(and title?
+                     (> (+ body-h p:title-h (* 2 (p:current-gap-size)))
+                        (p:get-client-h #:aspect aspect)))
+                'top]
+               [else 'center])]
+        [else layout]))
+
+(define (get-client-y title? elayout body-h base-h)
+  (case elayout
+    [(center) (/ (- base-h body-h) 2)]
+    [(top) (if title? (+ p:title-h (* 2 (p:current-gap-size))) 0)]
+    [(tall) (if title? (+ p:title-h (* 1 (p:current-gap-size))) 0)]
+    [else (error 'get-client-y "bad effective layout: ~e" elayout)]))
+
+(define default-layer (new default-layer%))
+
+(define layer%
+  (class h-layer-base%
+    (init-field placer
+                [aspect 'fullscreen];; Determines client area
+                [layout 'tall])     ;; Determines client area
+    (inherit get-gap)
+    (super-new)
+
+    (define/public (get-placer) placer)
+
+    ;; place : Boolean Layout (Listof Pict) LayerPre Pict -> Pict
+    ;; Result has same bounding box as base, places contents correctly
+    ;; if result is centered on slide.
+    (define/override (place title? slide-layout ps lpre base)
+      (define elayout (get-effective-layout* title? slide-layout lpre))
+      (define body (combine-picts ps lpre))
+      (define client (p:ppict-add (get-client-ppict title? elayout) body))
+      (p:pin-over base
+                  (/ (- (p:pict-width base) (p:pict-width client)) 2)
+                  (+ (/ (- (p:pict-height base) (p:pict-height client)) 2)
+                     (get-client-y title? elayout 0 0))
+                  client))
+
+    ;; get-effective-layout* : Layout Real -> Layout
+    (define/public (get-effective-layout* title? slide-layout body-h)
+      (let ([layout* (case layout [(slide-layout) slide-layout] [else layout])])
+        (get-effective-layout title? aspect layout* body-h)))
+
+    ;; get-client-ppict : Boolean ELayout -> PPict
+    (define/public (get-client-ppict title? elayout)
+      (p:ppict-do (p:blank (p:get-client-w #:aspect aspect)
+                           (- (p:get-client-h #:aspect aspect)
+                              (get-client-y title? elayout 0 0)))
+                  #:go (get-placer)))
+
+    ;; combine-picts : (Listof Pict) LayerPre -> Pict
+    (define/public (combine-picts ps lpre)
+      (define p (apply p:vc-append (get-gap) ps))
+      (p:inset p 0 (- lpre (p:pict-height p)) 0 0))
     ))
 
 (define (layer<? a b)
@@ -187,18 +205,10 @@
   (set! auto-z (+ auto-z auto-dz))
   auto-z)
 
-#;
-(define (make-layer #:placer placer
-                    #:width width
-                    #:z [z (next-auto-z)]
-                    #:style [istyle (hasheq)])
-  (let ([istyle (if width (hash-set istyle 'block-width width) istyle)])
-    (layer placer z istyle)))
-
 (define (make-layer rx1 rx2 ry align
                     #:aspect [aspect 'fullscreen]
                     #:layout [layout 'top]
-                    #:sep [gap (p:current-gap-size)]
+                    #:gap [gap (p:current-gap-size)]
                     #:style [style (hasheq)]
                     #:z [z (next-auto-z)])
   (define w (* (p:get-client-w #:aspect 'fullscreen) (- rx2 rx1)))
