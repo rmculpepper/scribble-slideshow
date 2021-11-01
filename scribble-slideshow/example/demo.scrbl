@@ -46,8 +46,8 @@
                                'inset-to-width #t)))
       (p:frame (apply flow-pict pre-flow))))
 
-  (define left-layer (make-layer 0.0 0.35 0 'lc))
-  (define right-layer (make-layer 0.4 1.0 0 'lc))
+  (define left-layer (make-layer 0.0 0.35 1/2 'lc))
+  (define right-layer (make-layer 0.4 1.0 1/2 'lc))
 
    #;
    (let ()
