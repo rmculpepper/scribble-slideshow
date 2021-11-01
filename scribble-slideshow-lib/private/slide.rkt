@@ -192,6 +192,7 @@
 ;;     layout = 'slide => 'full + CT/CC placer
 ;;     layout = 'slide/short => 'partial + CT/CC placer
 
+;; FIXME: replace with RefPage, etc
 (define (get-client-y title? elayout body-h base-h)
   (case elayout
     [(center) (/ (- base-h body-h) 2)]
