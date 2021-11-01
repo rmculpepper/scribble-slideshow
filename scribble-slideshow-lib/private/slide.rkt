@@ -41,16 +41,6 @@
 ;; ============================================================
 ;; Layers
 
-;; need W for flow->pict
-;; need placer-like to place result
-;; for next/alts:
-;; - use H, compute ourselves
-;; - use placer support?
-
-;; placer args
-;; - aspect (wide vs full)
-;; - 'tall / 'top / 'full
-
 (define layer<%>
   (interface ()
     get-z
@@ -137,6 +127,10 @@
       (p:pin-over base x y body-p))
     ))
 
+;; A SlideLayout is 'auto | 'center | 'top | 'tall.
+;; An EffectiveLayout is 'center | 'top | 'tall.
+
+;; get-effective-layout : Boolean Aspect SlideLayout Real -> EffectiveLayout
 (define (get-effective-layout title? aspect layout body-h)
   (cond [(memq layout '(auto #f))
          (cond [(and title?
@@ -145,6 +139,58 @@
                 'top]
                [else 'center])]
         [else layout]))
+
+;; A RefPage determines the height and y offset of the "reference page" to which
+;; the layer is relative. The y offset is relative to the top of full-page (that
+;; is, after the margin is already applied).
+
+;; A RefPage is one of
+;; - 'full      -- h = full, y = <center> = 0
+;; - 'partial   -- h = titleless, y = <center> = (titleh+2gap)/2
+;; - 't-top     -- h = titleless, y = titleh+2gap
+;; - 't-tall    -- h = titleless, y = titleh+1gap
+(define (refpage-h p)
+  (let ([titleh p:title-h] [gap (p:current-gap-size)])
+    (case p
+      [(full) (p:get-client-h)]
+      [else (- (p:get-client-h) titleh gap gap)])))
+(define (refpage-y p)
+  (let ([titleh p:title-h] [gap (p:current-gap-size)])
+    (case p
+      [(full) 0]
+      [(partial) (/ (+ titleh gap gap) 2)]
+      [(t-top) (+ titleh gap gap)]
+      [(t-tall) (+ titleh gap)]
+      [else (error 'refpage-y "bad refpage: ~e" p)])))
+
+;; A LayerLayout is mapped to a RefPage based also on whether there is a title
+;; and (possibly) the effective layout of the slide.
+
+;; A LayerLayout is one of
+;; - 'slide         -- depend on the slide layout, preferring 'full if no title
+;; - 'slide/short   -- depend on the slide layout, preferring 'partial if no title
+;; - RefPage        --
+
+(define (layout->refpage llayout title? slide-elayout)
+  (case llayout
+    [(slide slide/short)
+     (if title?
+         (case slide-elayout
+           [(tall) 't-tall]
+           [else #;(top center auto) 't-top])
+         (case llayout
+           [(slide) 'full]
+           [(slide/short) 'partial]))]
+    [else #;(full partial t-top t-tall) llayout]))
+
+;; layout = 'slide or 'slide/short
+;;   title? = true:
+;;     slide-layout = 'top => 't-top + CT placer
+;;     slide-layout = 'tall => 't-tall + CT placer
+;;     slide-layout = 'center => 't-top + CC placer
+;;   title? = false:
+;;     layout = 'slide => 'full + CT/CC placer
+;;     layout = 'slide/short => 'partial + CT/CC placer
 
 (define (get-client-y title? elayout body-h base-h)
   (case elayout
@@ -332,13 +378,16 @@
       (for/fold ([layer=>picts ctx-layers])
                 ([(lay body-p) (in-hash layer=>pict)])
         (hash-append layer=>picts lay (list body-p))))
-    (p:slide #:title title-p #:layout 'center #:aspect aspect
-             (for/fold ([base (p:get-full-page #:aspect aspect)])
-                       ([lay (in-list (sort (hash-keys layer=>picts) layer<?))])
-               (match-define (preinfo title? layers) pre)
-               (define ps (hash-ref layer=>picts lay))
-               (define lpre (hash-ref layers lay))
-               (send lay place title? layout ps lpre base)))
+    (define page
+      (for/fold ([base (p:get-full-page #:aspect aspect)])
+                ([lay (in-list (sort (hash-keys layer=>picts) layer<?))])
+        (match-define (preinfo title? layers) pre)
+        (define ps (hash-ref layer=>picts lay))
+        (define lpre (hash-ref layers lay))
+        (send lay place title? layout ps lpre base)))
+    (p:slide #:title title-p #:layout 'tall #:aspect aspect
+             (let ([y (if title-p (- (refpage-y 't-tall)) 0)])
+               (p:inset page 0 y 0 0)))
     (slctx title-p layout layer=>picts))
   (values new-h mk))
 
