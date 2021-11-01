@@ -266,8 +266,10 @@
 ;; Returns height of body plus slide-maker function.
 (define (slides-from-part p ctx-pre)
   (match p
-    [(s:part tag-pfx tags title-content style to-collect blocks parts)
+    [(s:part tag-pfx tags title-content0 style to-collect blocks parts)
      ;; Note: part styles are not inherited.
+     (define title-content
+       (if (memq 'no-title (s:style-properties style)) #f title-content0))
      (define istyle (add-slide-style style (current-sp-style)))
      (define mk0 (or (hash-ref istyle 'slide-maker #f) void))
      (define-values (pre mk)
