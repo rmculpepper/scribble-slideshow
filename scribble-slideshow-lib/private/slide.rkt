@@ -92,22 +92,23 @@
        (if (memq 'no-title (s:style-properties style)) #f title-content0))
      (define istyle (add-slide-style style (current-sp-style)))
      (define mk0 (or (hash-ref istyle 'slide-maker #f) void))
+     (define-values (pre1 mk1)
+       (slide-from-part-contents title-content blocks ctx-pre istyle))
+     (define slide-mode (hash-ref istyle 'slide-mode #f))
      (define-values (pre mk)
-       (case (hash-ref istyle 'slide-mode #f)
-         [(ignore)
+       (case slide-mode
+         [(ignore*)
           (values ctx-pre (lambda (pre ctx) ctx))]
          [(next)
-          (define-values (pre1 mk1)
-            (slide-from-part-contents title-content blocks ctx-pre istyle))
           (for/fold ([pre pre1] [mks (list mk1)]
                      #:result (values pre (do-next (reverse mks))))
                     ([p (in-list parts)])
             (define-values (ppre pmk) (slides-from-part p pre))
             (values ppre (cons pmk mks)))]
-         [(alts #f)
-          (define-values (pre1 mk1)
-            (slide-from-part-contents title-content blocks ctx-pre istyle))
-          (for/fold ([pre pre1] [mks (list mk1)]
+         [(alts ignore #f)
+          (define ignore? (eq? slide-mode 'ignore))
+          (for/fold ([pre (if ignore? ctx-pre pre1)]
+                     [mks (if ignore? null (list mk1))]
                      #:result (values pre (do-alts (reverse mks))))
                     ([p (in-list parts)])
             (define-values (ppre pmk) (slides-from-part p ctx-pre))
@@ -219,6 +220,7 @@
     ['next (hash-set istyle 'slide-mode 'next)]
     ['alts (hash-set istyle 'slide-mode 'alts)]
     ['ignore (hash-set istyle 'slide-mode 'ignore)]
+    ['ignore* (hash-set istyle 'slide-mode 'ignore*)]
     [(make-slides-prop mk) (hash-set istyle 'slide-maker mk)]
     ;; ----
     ;; standard scribble part styles seem irrelevant, ignore

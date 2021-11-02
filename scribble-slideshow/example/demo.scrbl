@@ -107,6 +107,18 @@ Benefits of @racketmodname[scribble-slideshow]:
 
 ]
 
+@section[#:style 'ignore]{Ignored slide}
+
+You should not see this.
+
+@section[#:style 'ignore*]{Ignored* slide}
+
+You should not see this slide...
+
+@subsection{Child of ignored* slide}
+
+... and you should not see this either.
+
 
 @section{Two-column slides}
 
