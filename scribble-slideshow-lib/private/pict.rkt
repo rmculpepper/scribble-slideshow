@@ -354,7 +354,7 @@
     [(s:nested-flow style flow)
      (render-flow flow (add-block-style style istyle))]
     [(s:itemization style flows)
-     (define bullet (get-bullet))
+     (define bullet (get-bullet istyle))
      (define bullet-width (+ (pict-width bullet) 10))
      (define sub-width (- (hash-ref istyle 'block-width +inf.0) bullet-width))
      (let* ([istyle (add-block-style style istyle)]
@@ -428,8 +428,9 @@
   (cond [(andmap pair? xss) (cons (map car xss) (transpose (map cdr xss)))]
         [else null]))
 
-(define (get-bullet)
-  (arrowhead (* 2/3 BASE-SIZE) 0))
+(define (get-bullet istyle)
+  (define text-size (hash-ref istyle 'text-size BASE-SIZE))
+  (arrowhead (* 2/3 text-size) 0))
 
 ;; ------------------------------------------------------------
 ;; Content
