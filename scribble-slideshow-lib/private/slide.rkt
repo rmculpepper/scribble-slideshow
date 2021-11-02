@@ -82,7 +82,7 @@
 
 ;; Assumption: aspect does not change during 'next/'alts run
 
-;; slides-from-part : Part Pre -> (values Real (Heights SlideContext -> SlideContext))
+;; slides-from-part : Part Pre -> (values Pre/#f (Pre SlideContext -> SlideContext))
 ;; Returns height of body plus slide-maker function.
 (define (slides-from-part p ctx-pre)
   (match p
@@ -91,30 +91,33 @@
      (define title-content
        (if (memq 'no-title (s:style-properties style)) #f title-content0))
      (define istyle (add-slide-style style (current-sp-style)))
-     (define mk0 (or (hash-ref istyle 'slide-maker #f) void))
-     (define-values (pre1 mk1)
-       (slide-from-part-contents title-content blocks ctx-pre istyle))
-     (define slide-mode (hash-ref istyle 'slide-mode #f))
-     (define-values (pre mk)
-       (case slide-mode
-         [(ignore*)
-          (values ctx-pre (lambda (pre ctx) ctx))]
-         [(next)
-          (for/fold ([pre pre1] [mks (list mk1)]
-                     #:result (values pre (do-next (reverse mks))))
-                    ([p (in-list parts)])
-            (define-values (ppre pmk) (slides-from-part p pre))
-            (values ppre (cons pmk mks)))]
-         [(alts ignore #f)
-          (define ignore? (eq? slide-mode 'ignore))
-          (for/fold ([pre (if ignore? ctx-pre pre1)]
-                     [mks (if ignore? null (list mk1))]
-                     #:result (values pre (do-alts (reverse mks))))
-                    ([p (in-list parts)])
-            (define-values (ppre pmk) (slides-from-part p ctx-pre))
-            (values (pre-max pre ppre) (cons pmk mks)))]))
-     (cond [ctx-pre (values pre (lambda (pre ctx) (mk0) (mk pre ctx)))]
-           [else (values #f (lambda (_pre ctx) (mk0) (mk pre ctx)))])]))
+     (slides-from-part-contents title-content istyle blocks parts ctx-pre)]))
+
+;; slides-from-part-contents : Content Style (Listof Block) (Listof Part) Pre
+;;                          -> (values Pre/#f (Pre SlideContext -> SlideContext))
+(define (slides-from-part-contents title-content istyle blocks parts ctx-pre)
+  (define mk0 (or (hash-ref istyle 'slide-maker #f) void))
+  (define-values (pre1 mk1) (slide-from-blocks title-content blocks ctx-pre istyle))
+  (define slide-mode (hash-ref istyle 'slide-mode #f))
+  (define-values (pre mk)
+    (case slide-mode
+      [(ignore*)
+       (values ctx-pre (lambda (pre ctx) ctx))]
+      [(next)
+       (for/fold ([pre pre1] [mks (list mk1)]
+                  #:result (values pre (do-next (reverse mks))))
+                 ([p (in-list parts)])
+         (define-values (ppre pmk) (slides-from-part p pre))
+         (values ppre (cons pmk mks)))]
+      [(alts ignore #f)
+       (define ignore? (eq? slide-mode 'ignore))
+       (for/fold ([pre (if ignore? ctx-pre pre1)] [mks (if ignore? null (list mk1))]
+                  #:result (values pre (do-alts (reverse mks))))
+                 ([p (in-list parts)])
+         (define-values (ppre pmk) (slides-from-part p ctx-pre))
+         (values (pre-max pre ppre) (cons pmk mks)))]))
+  (cond [ctx-pre (values pre (lambda (pre ctx) (mk0) (mk pre ctx)))]
+        [else (values #f (lambda (_pre ctx) (mk0) (mk pre ctx)))]))
 
 (define ((do-next mks) pre ctx)
   (for/fold ([ctx ctx]) ([mk (in-list mks)])
@@ -124,9 +127,9 @@
   (for/fold ([ctx ctx0]) ([mk (in-list mks)])
     (mk pre ctx0)))
 
-;; slide-from-part-contents : Content (Listof Block) Pre Style
-;;                         -> (values Pre ??)
-(define (slide-from-part-contents title-content blocks ctx-pre slide-istyle)
+;; slide-from-blocks : Content (Listof Block) Pre Style
+;;                  -> (values Pre (Pre SlideContext -> SlideContext))
+(define (slide-from-blocks title-content blocks ctx-pre slide-istyle)
   (define new-pre0
     (pre-has-title (or ctx-pre (empty-pre))
                    (and (member title-content '(#f ())) #t)))
