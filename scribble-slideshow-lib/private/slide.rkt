@@ -41,7 +41,7 @@
 ;; Preinfo (slide rendering pass 1)
 
 (struct preinfo
-  (title? ;; Boolean   -- was there ever a title?
+  (title? ;; Boolean   -- was there ever a title?  -- BROKEN for alts-like !!!
    layers ;; Hasheq[Layer => LayerPre]
    ) #:prefab)
 
@@ -116,8 +116,8 @@
                  ([p (in-list parts)])
          (define-values (ppre pmk) (slides-from-part p ctx-pre))
          (values (pre-max pre ppre) (cons pmk mks)))]))
-  (cond [ctx-pre (values pre (lambda (pre ctx) (mk0) (mk pre ctx)))]
-        [else (values #f (lambda (_pre ctx) (mk0) (mk pre ctx)))]))
+  (cond [ctx-pre (values pre (lambda (ppre ctx) (mk0) (mk ppre ctx)))]
+        [else (values #f (lambda (ppre ctx) (mk0) (mk pre ctx)))]))
 
 (define ((do-next mks) pre ctx)
   (for/fold ([ctx ctx]) ([mk (in-list mks)])
@@ -162,7 +162,7 @@
         (match-define (preinfo title? layers) pre)
         (define ps (hash-ref layer=>picts lay))
         (define lpre (hash-ref layers lay))
-        (send lay place title? layout ps lpre base)))
+        (send lay place (or title-p title?) layout ps lpre base)))
     (slide #:title title-p #:layout 'tall #:aspect aspect
            (let ([y (if title-p (- (refpage-y 't-tall)) 0)])
              (inset page 0 y 0 0)))
