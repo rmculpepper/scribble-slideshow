@@ -252,6 +252,7 @@
   (set! auto-z (+ auto-z auto-dz))
   auto-z)
 
+;;FIXME: rx ry align #:width ...
 (define (make-layer rx1 rx2 ry align
                     #:aspect [aspect 'fullscreen]
                     #:layout [layout 'top]
@@ -470,3 +471,8 @@
 
 (define (in-layer #:layer lay . flow)
   (s:compound-paragraph (s:style #f (list lay)) (s:decode-flow flow)))
+
+(define (in-style #:style style . flow)
+  (define (add-styles istyle)
+    (for/fold ([istyle istyle]) ([(k v) (in-hash style)]) (hash-set istyle k v)))
+  (s:compound-paragraph (s:style #f (list (style-transformer add-styles))) (s:decode-flow flow)))

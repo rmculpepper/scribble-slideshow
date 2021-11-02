@@ -8,6 +8,7 @@
          scribble-slides
          scribble-slides*
          part/make-slides
+         in-style
          in-layer
          make-layer)
 
