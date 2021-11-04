@@ -3,14 +3,8 @@
 
 #lang racket/base
 (require racket/match
-         racket/list
          racket/class
-         racket/hash
-         (prefix-in s: scribble/core)
-         (prefix-in s: scribble/html-properties)
-         (prefix-in s: scribble/latex-properties)
-         (prefix-in s: scribble/decode)
-         slideshow
+         (only-in slideshow/base current-gap-size title-h get-client-h get-client-w)
          pict
          ppict/pict
          "pict.rkt")
