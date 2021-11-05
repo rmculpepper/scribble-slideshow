@@ -6,14 +6,16 @@
          racket/list
          racket/class
          racket/hash
+         racket/port
          (prefix-in s: scribble/core)
          (prefix-in s: scribble/html-properties)
          (prefix-in s: scribble/latex-properties)
          (prefix-in s: scribble/decode)
-         slideshow
+         (only-in slideshow/base slide title-h get-full-page)
          pict
          ppict/pict
          "pict.rkt"
+         "scribble.rkt"
          "layer.rkt")
 (provide (all-defined-out)
          (all-from-out "layer.rkt"))
@@ -34,8 +36,9 @@
   (scribble-slides* (s:decode pre-parts)))
 
 (define (scribble-slides* p)
-  (define-values (h mk) (slides-from-part p #f))
-  (void (mk h no-ctx)))
+  (parameterize ((current-resolve-info (get-resolve-info (list p))))
+    (define-values (h mk) (slides-from-part p #f))
+    (void (mk h no-ctx))))
 
 ;; ------------------------------------------------------------
 ;; Preinfo (slide rendering pass 1)

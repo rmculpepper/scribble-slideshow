@@ -16,6 +16,8 @@
 
 (define-logger scribble-slideshow)
 
+(define current-resolve-info (make-parameter #f))
+
 ;; ============================================================
 ;; IStyle (aka SP-Style)
 
@@ -113,19 +115,35 @@
     [(roman) (hash-set istyle 'text-base s)]
     [(larger) (hash-set istyle 'scale (* 3/2 (hash-ref istyle 'scale 1)))]
     [(smaller) (hash-set istyle 'scale (* 2/3 (hash-ref istyle 'scale 1)))]
-    [("SCentered") (hash-set istyle 'block-halign 'center)]
-    [("RktInBG") (hash-set istyle 'bgcolor "lightgray")]
-    [("RktIn") (hash-set* istyle 'text-base 'modern 'color '(#xCC #x66 #x33))]
-    [("RktPn") (hash-set* istyle 'text-base 'modern 'color '(#x84 #x3C #x24))]
-    [("RktSym") (hash-set* istyle 'text-base 'modern 'color '(#x00 #x00 #x80))] ;; ???
-    [("RktVar") (hash-set* (hash-cons istyle 'text-mods 'italic)
-                           'text-base 'modern 'color '(#x40 #x40 #x40))]
-    [("RktRes") (hash-set* istyle 'text-base 'modern 'color '(#x00 #x00 #xAF))]
-    [("RktOut") (hash-set* istyle 'text-base 'modern 'color '(#x96 #x00 #x96))]
-    [("RktCmt") (hash-set* istyle 'text-base 'modern 'color '(#xC2 #x74 #x1F))]
-    [("RktVal") (hash-set* istyle 'text-base 'modern 'color '(#x22 #x8B #x22))]
     [("RktBlk") (hash-set* istyle 'text-base 'modern 'keep-whitespace? #t)]
-    [("RktSymDef") (hash-set* istyle 'text-base 'modern 'color "black" 'text-mods '(bold))]
+    [("RktCmt") (hash-set* istyle 'text-base 'modern 'color '(#xC2 #x74 #x1F))]
+    [("RktErr") (hash-set* (hash-cons istyle 'text-mods 'italic)
+                           'text-base 'modern 'color "red")]
+    [("RktIn") (hash-set* istyle 'text-base 'modern 'color '(#xCC #x66 #x33))]
+    [("RktKw") (hash-set* istyle 'text-base 'modern 'color "black")]
+    [("RktMeta") (hash-set* istyle 'text-base 'modern 'color "black")]
+    [("RktMod") (hash-set* istyle 'text-base 'modern)]
+    [("RktOut") (hash-set* istyle 'text-base 'modern 'color '(#x96 #x00 #x96))]
+    [("RktOpt") (hash-set* (hash-cons istyle 'text-mods 'italic) 'color "black")]
+    [("RktPn") (hash-set* istyle 'text-base 'modern 'color '(#x84 #x3C #x24))]
+    [("RktRes") (hash-set* istyle 'text-base 'modern 'color '(#x00 #x00 #xAF))]
+    [("RktRdr") (hash-set* istyle 'text-base 'modern)]
+    [("RktSym") (hash-set* istyle 'text-base 'modern
+                           ;; Scribble renders in black, but DrRacket in dark blue.
+                           ;; I think dark blue is a better contrast with slide text.
+                           'color '(#x00 #x00 #x80))]
+    [("RktVar") (hash-set* (hash-cons istyle 'text-mods 'italic)
+                           'text-base 'modern 'color '(#x44 #x44 #x44))]
+    [("RktVal") (hash-set* istyle 'text-base 'modern 'color '(#x22 #x8B #x22))]
+    [("RktInBG") (hash-set istyle 'bgcolor "lightgray")]
+    [("RktStxDef" "RktSymDef" "RktValDef")
+     (hash-set* istyle 'text-base 'modern 'color "black" 'text-mods '(bold))]
+    [("RktValLink" "RktStxLink" "RktModLink")
+     (hash-set* istyle 'color '(#x00 #x77 #xAA))]
+    [("defmodule") (hash-set istyle 'bgcolor '(#xEB #xF0 #xF4))]
+    [("highlighted") (hash-set istyle 'bgcolor '(#xFF #xEE #xEE))]
+    [("Rfiletitle") (hash-set istyle 'bgcolor '(#xEE #xEE #xEE))]
+    [("SCentered") (hash-set istyle 'block-halign 'center)]
     [(hspace) (hash-set* istyle 'text-base 'modern 'keep-whitespace? #t)]
     [(#f) istyle]
     [else
@@ -364,7 +382,14 @@
                         (htl-append 10 bullet (flow->pict flow istyle)))))]
     [(s:table style blockss)
      (let ([istyle (hash-set istyle 'inset-to-width? #f)])
-       (table->pict blockss (add-table-style style istyle)))]))
+       (table->pict blockss (add-table-style style istyle)))]
+    [(? s:traverse-block? block)
+     (render-block (s:traverse-block-block block (current-resolve-info)) istyle)]
+    [(? s:delayed-block? block)
+     (append-blocks (get-line-sep istyle)
+                    (for/list ([b (in-list (s:delayed-block-blocks block (current-resolve-info)))])
+                      (render-block b istyle)))]
+    ))
 
 (define (table->pict cellss istyle)
   (define nrows (length cellss))
@@ -479,8 +504,18 @@
       [(? pict? p) (cons (fragment (base-content->pict p istyle) #f) acc)]
       [(s:element style content)
        (loop content acc (add-style style istyle))]
-      [(s:delayed-element _ _ plain) (loop (plain) acc istyle)]
-      [(s:part-relative-element _ _ plain) (loop (plain) acc istyle)]
+      ;; multiarg-element -- ??
+      ;; render-element -- ??
+      [(? s:traverse-element? e)
+       (loop (s:traverse-element-content e (current-resolve-info)) acc istyle)]
+      [(? s:delayed-element? e)
+       (cond [(current-resolve-info)
+              => (lambda (ri) (loop (s:delayed-element-content e ri) acc istyle))]
+             [else (loop ((s:delayed-element-plain e)) acc istyle)])]
+      [(? s:part-relative-element? e)
+       (cond [(current-resolve-info)
+              => (lambda (ri) (loop (s:part-relative-element-content e ri) acc istyle))]
+             [else (loop ((s:part-relative-element-plain e)) acc istyle)])]
       [(? pict-convertible?) (loop (pict-convert content) acc istyle)]
       [(? list? content)
        (for/fold ([acc acc]) ([part (in-list content)])
