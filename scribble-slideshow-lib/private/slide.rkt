@@ -6,7 +6,6 @@
          racket/list
          racket/class
          racket/hash
-         racket/port
          (prefix-in s: scribble/core)
          (prefix-in s: scribble/html-properties)
          (prefix-in s: scribble/latex-properties)
