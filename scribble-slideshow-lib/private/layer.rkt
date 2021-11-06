@@ -7,7 +7,7 @@
          (only-in slideshow/base current-gap-size title-h get-client-h get-client-w)
          pict
          ppict/pict
-         "pict.rkt")
+         "style.rkt")
 (provide (all-defined-out))
 
 ;; ============================================================

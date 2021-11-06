@@ -11,9 +11,7 @@
          pict pict/convert
          "style.rkt"
          "content.rkt")
-(provide (all-defined-out)
-         (all-from-out "style.rkt")
-         (all-from-out "content.rkt"))
+(provide (all-defined-out))
 
 ;; ------------------------------------------------------------
 ;; Block Styles

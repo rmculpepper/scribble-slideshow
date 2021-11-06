@@ -13,7 +13,9 @@
          (only-in slideshow/base slide title-h get-full-page)
          pict
          ppict/pict
-         "pict.rkt"
+         "style.rkt"
+         "content.rkt"
+         "block.rkt"
          "scribble.rkt"
          "layer.rkt")
 (provide (all-defined-out)
