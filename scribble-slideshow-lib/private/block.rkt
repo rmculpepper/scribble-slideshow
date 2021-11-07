@@ -10,6 +10,7 @@
          (prefix-in s: scribble/decode)
          pict pict/convert
          "style.rkt"
+         "scribble.rkt"
          "content.rkt")
 (provide (all-defined-out))
 
@@ -311,7 +312,11 @@
 
 ;; ============================================================
 
-(define (flow-pict #:style [style #f] . pre-flow)
+(define (flow-pict #:style [style #f] #:resolve? [resolve? #t] . pre-flow)
   (define flow (s:decode-flow pre-flow))
   #;(debug-flow flow)
-  (flow->pict flow (add-style style (current-istyle))))
+  (parameterize ((current-resolve-info (if resolve? (resolve-flow flow) #f)))
+    (flow->pict flow (add-style style (current-istyle)))))
+
+(define (resolve-flow flow)
+  (get-resolve-info (list (s:part #f null #f (s:style #f null) null flow null))))
