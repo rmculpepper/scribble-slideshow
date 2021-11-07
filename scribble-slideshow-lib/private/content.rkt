@@ -45,17 +45,25 @@
 ;; WSMode = 'ws | 'nl | #f.
 (struct fragment (pict ws) #:prefab)
 
+;; FIXME: handle @|?-|, soft hyphen
+;; FIXME: handle @nonbreaking{..}, 'no-break style
+
 ;; content->rfragments : Content IStyle -> (Listof Fragment), reversed
 (define (content->rfragments content istyle)
   (define (loop content acc istyle)
     (match content
       [(? string?)
-       (for/fold ([acc acc])
-                 ([seg (in-list (string->segments (regexp-replace* "\n" content " ")))])
-         (define p (base-content->pict seg istyle))
-         (define ws? (and (regexp-match? #px"^\\s*$" seg)
-                          (not (hash-ref istyle 'keep-whitespace? #f))))
-         (cons (fragment p (and ws? 'ws)) acc))]
+       (for/fold ([acc acc]) ([seg (in-list (string->segments content))])
+         (cond [(regexp-match? #px"^\\s*$" seg)
+                (cond [(hash-ref istyle 'keep-whitespace? #f)
+                       (cons (fragment (base-content->pict seg istyle) #f) acc)]
+                      [#f ;; the old way, roughly
+                       (let ([seg (regexp-replace* #rx"\n" seg " ")])
+                         (cons (fragment (base-content->pict seg istyle) 'ws) acc))]
+                      [else
+                       (cons (fragment (base-content->pict " " istyle) 'ws) acc)])]
+               [else
+                (cons (fragment (base-content->pict seg istyle) #f) acc)]))]
       [(? symbol? s) (loop (content-symbol->string s) acc istyle)]
       [(? pict? p) (cons (fragment (base-content->pict p istyle) #f) acc)]
       [(s:element 'newline '("\n"))
@@ -164,8 +172,8 @@
        (outer-loop null (cons (line) outer-acc))]))
   (outer-loop fs null))
 
+;; A Segment is a String that contains either all whitespace or no whitespace chars.
 (define (string->segments s)
-  ;; A Segment is a String that contains either all whitespace or no whitespace chars.
   (define ws-zones (regexp-match-positions* #px"\\s+" s))
   (let loop ([start 0] [ws-zones ws-zones])
     (cond [(null? ws-zones)
