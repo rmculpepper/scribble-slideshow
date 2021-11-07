@@ -42,8 +42,12 @@
 
 ;; A Fragment is (fragment Pict WSMode), where a pict originating
 ;; from a string either contains no whitespace or only whitespace.
-;; WSMode = 'ws | 'nl | #f.
 (struct fragment (pict ws) #:prefab)
+
+;; A WSMode is one of
+;; - 'ws    -- soft whitespace: can break line, dropped at EOL
+;; - 'nl    -- hard newline
+;; - #f     -- not whitespace
 
 ;; FIXME: handle @|?-|, soft hyphen
 ;; FIXME: handle @nonbreaking{..}, 'no-break style
@@ -56,7 +60,9 @@
        (for/fold ([acc acc]) ([seg (in-list (string->segments content))])
          (cond [(regexp-match? #px"^\\s*$" seg)
                 (cond [(hash-ref istyle 'keep-whitespace? #f)
-                       (cons (fragment (base-content->pict seg istyle) #f) acc)]
+                       ;; keep whitespace: can break line before or after, but don't drop
+                       (define nws (fragment (blank) 'ws))
+                       (list* nws (fragment (base-content->pict seg istyle) #f) nws acc)]
                       [#f ;; the old way, roughly
                        (let ([seg (regexp-replace* #rx"\n" seg " ")])
                          (cons (fragment (base-content->pict seg istyle) 'ws) acc))]
@@ -164,7 +170,7 @@
       [(cons (fragment p ws?) fs)
        (define pw (pict-width p))
        (cond [(or (<= (+ accw pw) width) ;; line still has space
-                  (and (null? acc) (not ws?))) ;; too long, but can't break
+                  (and (zero? accw) (not ws?))) ;; too long, but can't break
               (inner-loop fs (cons p acc) (+ accw pw) (if ws? pw #f) outer-acc)]
              [else
               (outer-loop fs0 (cons (line) outer-acc))])]
