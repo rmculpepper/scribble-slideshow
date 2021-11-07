@@ -40,9 +40,10 @@
 ;;
 ;; 3. Pack lines using unbreakable sequences.
 
-;; A Fragment is (fragment Pict Boolean), where a pict originating
+;; A Fragment is (fragment Pict WSMode), where a pict originating
 ;; from a string either contains no whitespace or only whitespace.
-(struct fragment (pict ws?) #:prefab)
+;; WSMode = 'ws | 'nl | #f.
+(struct fragment (pict ws) #:prefab)
 
 ;; content->rfragments : Content IStyle -> (Listof Fragment), reversed
 (define (content->rfragments content istyle)
@@ -54,9 +55,11 @@
          (define p (base-content->pict seg istyle))
          (define ws? (and (regexp-match? #px"^\\s*$" seg)
                           (not (hash-ref istyle 'keep-whitespace? #f))))
-         (cons (fragment p ws?) acc))]
+         (cons (fragment p (and ws? 'ws)) acc))]
       [(? symbol? s) (loop (content-symbol->string s) acc istyle)]
       [(? pict? p) (cons (fragment (base-content->pict p istyle) #f) acc)]
+      [(s:element 'newline '("\n"))
+       (cons (fragment (blank) 'nl) acc)]
       [(s:element style content)
        (loop content acc (add-style style istyle))]
       ;; multiarg-element -- ??
@@ -84,26 +87,14 @@
   ;;(define (mark p) (frame p #:color "lightblue"))
   (define (outer-loop fs outer-acc)
     (match fs
-      [(cons (and f (fragment p #t)) fs)
-       (ws-loop fs (list p) outer-acc)]
-      [(cons (and f (fragment p #f)) fs)
-       (inner-loop fs (list p) outer-acc)]
-      ['()
-       outer-acc]))
-  (define (ws-loop fs ws-acc outer-acc)
-    (define (combine-ws ps) (mark (apply hbl-append 0 ps)))
-    (define (mark p) p #;(frame p #:color "gray"))
+      [(cons (and f (fragment p ws)) fs)
+       (inner-loop ws fs (list p) outer-acc)]
+      ['() outer-acc]))
+  (define (inner-loop ws fs inner-acc outer-acc)
     (match fs
-      [(cons (fragment p #t) fs)
-       (ws-loop fs (cons p ws-acc) outer-acc)]
-      [_ (outer-loop fs (cons (fragment (combine-ws ws-acc) #t) outer-acc))]))
-  (define (inner-loop fs inner-acc outer-acc)
-    (define (combine-inner ps) (mark (apply hbl-append 0 ps)))
-    (define (mark p) p #;(frame p #:color "lightblue"))
-    (match fs
-      [(cons (fragment p #f) fs)
-       (inner-loop fs (cons p inner-acc) outer-acc)]
-      [_ (outer-loop fs (cons (fragment (combine-inner inner-acc) #f) outer-acc))]))
+      [(cons (fragment p (== ws)) fs)
+       (inner-loop ws fs (cons p inner-acc) outer-acc)]
+      [_ (outer-loop fs (cons (fragment (combine-inner inner-acc) ws) outer-acc))]))
   (outer-loop fs null))
 
 (define (content-symbol->string sym)
@@ -113,7 +104,7 @@
     [(mdash) "—"] [(ndash) "–"]
     [(prime) "′"]
     [(nbsp) " "] ;; non-breaking space
-    [(rarr) "→"]
+    [(larr) "←"] [(rarr) "→"]
     [else (error 'content-symbol->string "unknown symbol: ~e" sym)]))
 
 (define (base-content->pict content istyle)
@@ -151,7 +142,7 @@
   (define (outer-loop fs outer-acc)
     (match fs
       ['() (reverse outer-acc)]
-      [(cons (fragment _ #t) fs)
+      [(cons (fragment _ 'ws) fs)
        (outer-loop fs outer-acc)]
       [fs ;; starts with non-ws fragment
        (inner-loop fs null 0 #f outer-acc)]))
@@ -160,6 +151,8 @@
       (let ([acc (if wsw (cdr acc) acc)])
         (apply hbl-append 0 (reverse acc))))
     (match fs0
+      [(cons (fragment p 'nl) fs)
+       (outer-loop fs (cons (line) outer-acc))]
       [(cons (fragment p ws?) fs)
        (define pw (pict-width p))
        (cond [(or (<= (+ accw pw) width) ;; line still has space
