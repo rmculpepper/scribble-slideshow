@@ -86,26 +86,6 @@
            (cons (conv-ws (substring s (caar ws-zones) (cdar ws-zones)))
                  (loop (cdar ws-zones) (cdr ws-zones)))])))
 
-;; ------------------------------------------------------------
-
-(define (content->pict/v1 content istyle width)
-  (define fs1 (content->rfragments content istyle))
-  (define fs2 (coalesce-rfragments fs1))
-  (define lines (linebreak-fragments fs2 width))
-  (apply vl-append (get-line-sep istyle) lines))
-
-;; Linebreaking algorithm:
-;;
-;; 1. Split strings into atomic fragments. A string fragment is either
-;; all whitespace or whitespace-free.
-;;
-;; 2. Coalesce unbreakable sequences of fragments. A sequence of
-;; fragments can be broken only before or after whitespace
-;; fragment. FIXME: could add more breaking options, but easy to add
-;; whitespace, so why bother?
-;;
-;; 3. Pack lines using unbreakable sequences.
-
 ;; A Fragment is one of
 ;; - (fragment Pict WSMode), where a pict originating
 ;;   from a string either contains no whitespace or only whitespace,
@@ -116,9 +96,6 @@
 ;; A WSMode is one of
 ;; - 'ws    -- soft whitespace: can break line, dropped at EOL
 ;; - #f     -- not whitespace: cannot break, cannot drop
-
-;; FIXME: handle @|?-|, soft hyphen
-;; FIXME: handle @nonbreaking{..}, 'no-break style
 
 ;; content->rfragments : Content IStyle -> (Listof Fragment), reversed
 (define (content->rfragments content istyle)
@@ -168,6 +145,29 @@
          (loop part acc istyle))]
       [_ (error 'content->rfragments "bad content: ~e" content)]))
   (loop content null istyle))
+
+;; ------------------------------------------------------------
+
+(define (content->pict/v1 content istyle width)
+  (define fs1 (content->rfragments content istyle))
+  (define fs2 (coalesce-rfragments fs1))
+  (define lines (linebreak-fragments fs2 width))
+  (apply vl-append (get-line-sep istyle) lines))
+
+;; Linebreaking algorithm:
+;;
+;; 1. Split strings into atomic fragments. A string fragment is either
+;; all whitespace or whitespace-free.
+;;
+;; 2. Coalesce unbreakable sequences of fragments. A sequence of
+;; fragments can be broken only before or after whitespace
+;; fragment. FIXME: could add more breaking options, but easy to add
+;; whitespace, so why bother?
+;;
+;; 3. Pack lines using unbreakable sequences.
+
+;; FIXME: handle @|?-|, soft hyphen
+;; FIXME: handle @nonbreaking{..}, 'no-break style
 
 ;; coalesce-rfragments : (Listof Fragment) -> (Listof Fragment), reversed
 (define (coalesce-rfragments fs)
