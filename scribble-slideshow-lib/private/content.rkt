@@ -4,6 +4,7 @@
 #lang racket/base
 (require racket/match
          racket/list
+         racket/string
          (prefix-in s: scribble/core)
          (prefix-in s: scribble/html-properties)
          (prefix-in s: scribble/latex-properties)
@@ -23,7 +24,7 @@
 ;; - (Listof Content)
 
 (define (content->pict content istyle width)
-  (content->pict/v1 content istyle width))
+  (content->pict/v2 content istyle width))
 
 (define (content-symbol->string sym)
   (case sym
@@ -188,6 +189,7 @@
   (outer-loop fs null))
 
 ;; linebreak-fragments : (Listof Fragment) PositiveReal -> (Listof Pict)
+;; Note: this assumes adjacent non-ws fragments have already been coalesced.
 (define (linebreak-fragments fs width)
   (define (outer-loop fs outer-acc)
     (match fs
@@ -215,3 +217,103 @@
   (outer-loop fs null))
 
 ;; ------------------------------------------------------------
+
+(define (content->pict/v2 content istyle width)
+  (define rfs (content->rfragments content istyle))
+  (define fv (rfragments->vector rfs istyle))
+  (define breaks (linebreak2 fv istyle width))
+  (eprintf "width = ~s, breaks = ~e\n" width breaks)
+  (define lines (get-lines fv breaks))
+  ;; (eprintf "lines = ~e\n" lines)
+  (apply vl-append (get-line-sep istyle) lines))
+
+(struct soft-hyphen (istyle) #:prefab)
+
+(struct lbst
+  (inkw     ;; Real -- width of current line to last non-ws
+   wsw      ;; Real/#f -- width of ws at end of current line
+   breaks   ;; (Listof Nat) -- list of breaks; N means break line *before* fragment N
+   badness  ;; Real -- total badness of previous lines
+   ) #:prefab)
+
+(define (rfragments->vector rfs istyle)
+  (list->vector
+   (for/fold ([acc null]) ([f (in-list rfs)])
+     (match f
+       [(fragment:string p #f str istyle)
+        (define hyphen-p (base-content->pict "-" istyle))
+        (define subfs
+          (map (lambda (s) (fragment (base-content->pict s istyle) #f))
+               (string-split str "\U00AD" #:trim? #f)))
+        (append (add-between subfs (soft-hyphen hyphen-p)) acc)]
+       [_ (cons f acc)]))))
+
+(define (linebreak2 fv istyle width)
+  (define st0 (lbst 0 #f null 0))
+  (define lbsts
+    (for/fold ([sts (list st0)])
+              ([f (in-vector fv)] [index (in-naturals)])
+      (cut-lbsts width (append* (for/list ([st (in-list sts)]) (next-lbst index st f width))))))
+  (define sorted-lbsts (sort lbsts < #:key lbst-badness))
+  (reverse (lbst-breaks (car sorted-lbsts))))
+
+(define (cut-lbsts width sts)
+  (define N 16)
+  (define sorted-sts (sort sts < #:key (predict-badness width)))
+  (if (> (length sorted-sts) N) (take sorted-sts N) sorted-sts))
+
+(define (next-lbst index st f width)
+  (match-define (lbst inkw wsw breaks badness) st)
+  (match f
+    ['nl
+     (list (lbst 0 #f (cons index breaks)
+                 (+ badness (line-badness width inkw #f))))]
+    [(soft-hyphen p)
+     (define pw (pict-width p))
+     (list (lbst inkw wsw breaks badness)
+           (lbst 0 #f (cons (add1 index) breaks)
+                 (+ badness (line-badness width (+ inkw pw)))))]
+    [(fragment p 'ws)
+     (define pw (pict-width p))
+     (list (lbst inkw (+ (or wsw 0) pw) breaks badness))]
+    [(fragment p #f)
+     (define pw (pict-width p))
+     (append
+      (list (lbst (+ inkw (or wsw 0) pw) #f breaks badness))
+      (cond [(zero? inkw) null] ;; can't break, no ink on current line
+            [(not wsw) null]    ;; can't break, not after ws
+            [else (list (lbst pw #f (cons index breaks)
+                              (+ badness (line-badness width inkw))))]))]))
+
+(define ((predict-badness width) st)
+  (match-define (lbst inkw wsw breaks badness) st)
+  (+ badness (line-badness width inkw #f)))
+
+(define (line-badness width inkw [under-bad? #t])
+  (define over (max 0 (- inkw width)))
+  (define under (if under-bad? (max 0 (- width inkw)) 0))
+  (+ (if (zero? under) 0 (+ (expt under 2) 0))
+     (if (zero? over)  0 (+ (expt over 3)  (* width 1/4)))))
+
+(define (get-lines fv breaks)
+  (let loop ([start 0] [breaks breaks])
+    (match breaks
+      ['() (list (get-line fv start (vector-length fv)))]
+      [(cons break breaks)
+       (cons (get-line fv start break)
+             (loop break breaks))])))
+
+(define (get-line fv start end)
+  (let ([start
+         (let loop ([start start])
+           (cond [(and (< start end) (eq? (vector-ref fv start) 'nl))
+                  (loop (add1 start))]
+                 [else start]))])
+    (apply hbl-append
+           (let loop ([start start])
+             (cond [(< start end)
+                    (match (vector-ref fv start)
+                      [(fragment p _) (cons p (loop (add1 start)))]
+                      [(soft-hyphen p) (if (= (add1 start) end) (list p) (loop (add1 start)))]
+                      [else (loop (add1 start))])]
+                   [else null])))))
