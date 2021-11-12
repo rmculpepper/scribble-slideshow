@@ -88,6 +88,7 @@
 ;; A Fragment is (fragment Pict WSMode), where a pict originating
 ;; from a string either contains no whitespace or only whitespace.
 (struct fragment (pict ws) #:prefab)
+(struct fragment:string fragment (str istyle) #:prefab)
 
 ;; A WSMode is one of
 ;; - 'ws    -- soft whitespace: can break line, dropped at EOL
@@ -118,6 +119,8 @@
                    (list* nws (fragment seg-pict #f) nws acc)]
                   [(#f) (cons (fragment seg-pict 'ws) acc)]
                   [else (error 'content->fragments "unhandled wsmode ~e" wsmode)])]
+               [(regexp-match? #rx"[\u00AD]" seg)
+                (cons (fragment:string (base-content->pict seg istyle) #f seg istyle) acc)]
                [else
                 (cons (fragment (base-content->pict seg istyle) #f) acc)]))]
       [(? symbol? s) (loop (content-symbol->string s) acc istyle)]
