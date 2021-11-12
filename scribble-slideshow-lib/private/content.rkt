@@ -23,6 +23,51 @@
 ;; - (Listof Content)
 
 (define (content->pict content istyle width)
+  (content->pict/v1 content istyle width))
+
+(define (content-symbol->string sym)
+  (case sym
+    [(lsquo) "‘"] [(rsquo) "’"]
+    [(ldquo) "“"] [(rdquo) "”"]
+    [(mdash) "—"] [(ndash) "–"]
+    [(prime) "′"]
+    [(nbsp) " "] ;; non-breaking space
+    [(larr) "←"] [(rarr) "→"]
+    [else (error 'content-symbol->string "unknown symbol: ~e" sym)]))
+
+(define (base-content->pict content istyle)
+  (define (~~> v . fs) (foldl (lambda (f v) (f v)) v fs))
+  (define (finish p istyle text?)
+    (~~> p
+         (lambda (p)
+           (cond [(hash-ref istyle 'color #f)
+                  => (lambda (c) (colorize p c))]
+                 [else p]))
+         (lambda (p)
+           (scale p (hash-ref istyle 'scale 1)))
+         (lambda (p)
+           (cond [(and text? (hash-ref istyle 'text-post #f))
+                  => (lambda (posts)
+                       (for/fold ([p p]) ([post (in-list (reverse posts))]) (post p)))]
+                 [else p]))
+         (lambda (p)
+           (cond [(hash-ref istyle 'elem-post #f)
+                  => (lambda (posts)
+                       (for/fold ([p p]) ([post (in-list (reverse posts))]) (post p)))]
+                 [else p]))
+         (lambda (p)
+           (cond [(hash-ref istyle 'bgcolor #f)
+                  => (lambda (c) (bg-colorize p c))]
+                 [else p]))))
+  (match content
+    [(? pict? p) (finish p istyle #f)]
+    [(? string? str)
+     (define ptstyle (append (hash-ref istyle 'text-mods null) (hash-ref istyle 'text-base)))
+     (finish (text str ptstyle (hash-ref istyle 'text-size)) istyle #t)]))
+
+;; ------------------------------------------------------------
+
+(define (content->pict/v1 content istyle width)
   (define fs1 (content->rfragments content istyle))
   (define fs2 (coalesce-rfragments fs1))
   (define lines (linebreak-fragments fs2 width))
@@ -57,17 +102,22 @@
   (define (loop content acc istyle)
     (match content
       [(? string?)
-       (for/fold ([acc acc]) ([seg (in-list (string->segments content))])
-         (cond [(regexp-match? #px"^\\s*$" seg)
-                (cond [(hash-ref istyle 'keep-whitespace? #f)
-                       ;; keep whitespace: can break line before or after, but don't drop
-                       (define nws (fragment (blank) 'ws))
-                       (list* nws (fragment (base-content->pict seg istyle) #f) nws acc)]
-                      [#f ;; the old way, roughly
-                       (let ([seg (regexp-replace* #rx"\n" seg " ")])
-                         (cons (fragment (base-content->pict seg istyle) 'ws) acc))]
-                      [else
-                       (cons (fragment (base-content->pict " " istyle) 'ws) acc)])]
+       (define wsmode (hash-ref istyle 'white-space #f))
+       (for/fold ([acc acc]) ([seg (in-list (string->segments content wsmode))])
+         (cond [(equal? seg "\n")
+                (cons (fragment (blank) 'nl) acc)]
+               [(regexp-match? #rx"^[ \t]+$" seg)
+                (define seg-pict (base-content->pict seg istyle))
+                (case wsmode
+                  [(pre nowrap)
+                   ;; keep whitespace; cannot break line
+                   (cons (fragment seg-pict #f) acc)]
+                  [(pre-wrap)
+                   ;; keep whitespace, can break line before/after
+                   (define nws (fragment (blank) 'ws))
+                   (list* nws (fragment seg-pict #f) nws acc)]
+                  [(#f) (cons (fragment seg-pict 'ws) acc)]
+                  [else (error 'content->fragments "unhandled wsmode ~e" wsmode)])]
                [else
                 (cons (fragment (base-content->pict seg istyle) #f) acc)]))]
       [(? symbol? s) (loop (content-symbol->string s) acc istyle)]
@@ -111,46 +161,6 @@
       [_ (outer-loop fs (cons (fragment (combine-inner inner-acc) ws) outer-acc))]))
   (outer-loop fs null))
 
-(define (content-symbol->string sym)
-  (case sym
-    [(lsquo) "‘"] [(rsquo) "’"]
-    [(ldquo) "“"] [(rdquo) "”"]
-    [(mdash) "—"] [(ndash) "–"]
-    [(prime) "′"]
-    [(nbsp) " "] ;; non-breaking space
-    [(larr) "←"] [(rarr) "→"]
-    [else (error 'content-symbol->string "unknown symbol: ~e" sym)]))
-
-(define (base-content->pict content istyle)
-  (define (~~> v . fs) (foldl (lambda (f v) (f v)) v fs))
-  (define (finish p istyle text?)
-    (~~> p
-         (lambda (p)
-           (cond [(hash-ref istyle 'color #f)
-                  => (lambda (c) (colorize p c))]
-                 [else p]))
-         (lambda (p)
-           (scale p (hash-ref istyle 'scale 1)))
-         (lambda (p)
-           (cond [(and text? (hash-ref istyle 'text-post #f))
-                  => (lambda (posts)
-                       (for/fold ([p p]) ([post (in-list (reverse posts))]) (post p)))]
-                 [else p]))
-         (lambda (p)
-           (cond [(hash-ref istyle 'elem-post #f)
-                  => (lambda (posts)
-                       (for/fold ([p p]) ([post (in-list (reverse posts))]) (post p)))]
-                 [else p]))
-         (lambda (p)
-           (cond [(hash-ref istyle 'bgcolor #f)
-                  => (lambda (c) (bg-colorize p c))]
-                 [else p]))))
-  (match content
-    [(? pict? p) (finish p istyle #f)]
-    [(? string? str)
-     (define ptstyle (append (hash-ref istyle 'text-mods null) (hash-ref istyle 'text-base)))
-     (finish (text str ptstyle (hash-ref istyle 'text-size)) istyle #t)]))
-
 ;; linebreak-fragments : (Listof Fragment) PositiveReal -> (Listof Pict)
 (define (linebreak-fragments fs width)
   (define (outer-loop fs outer-acc)
@@ -178,14 +188,25 @@
        (outer-loop null (cons (line) outer-acc))]))
   (outer-loop fs null))
 
-;; A Segment is a String that contains either all whitespace or no whitespace chars.
-(define (string->segments s)
-  (define ws-zones (regexp-match-positions* #px"\\s+" s))
+;; A Segment is a String that contains either
+;; - no whitespace characters
+;; - one or more linear whitespace characters (space and tab)
+;; - exactly one newline ("\n"); may be multiple chars in source, eg "\n\r"
+(define (string->segments s wsmode)
+  (define ws-rx (if wsmode #rx"[ \t]+|\n\r?|\r" #px"\\s+"))
+  (define (conv-ws s)
+    (case wsmode
+      [(pre pre-wrap) (case s [("\n" "\r" "\n\r") "\n"] [else s])]
+      [(nowrap) (case s [("\n" "\r" "\n\r") " "] [else s])]
+      [else #;(#f)  " "]))
+  (define ws-zones (regexp-match-positions* #px"[ \t]+|\n\r?|\r" s))
   (let loop ([start 0] [ws-zones ws-zones])
     (cond [(null? ws-zones)
            (if (< start (string-length s)) (list (substring s start)) null)]
           [(< start (caar ws-zones))
            (cons (substring s start (caar ws-zones)) (loop (caar ws-zones) ws-zones))]
           [else
-           (cons (substring s (caar ws-zones) (cdar ws-zones))
+           (cons (conv-ws (substring s (caar ws-zones) (cdar ws-zones)))
                  (loop (cdar ws-zones) (cdr ws-zones)))])))
+
+;; ------------------------------------------------------------

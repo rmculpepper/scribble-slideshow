@@ -93,7 +93,7 @@
 ;; - 'text-mods : (Listof PictTextStyleSymbol) -- see `text`
 ;; - 'color : (U String color%)
 ;; - 'bgcolor : (U String color%)
-;; - 'keep-whitespace? : Boolean
+;; - 'white-space : #f | 'pre | 'pre-wrap | 'nowrap
 ;; - 'text-post : (Listof (Pict -> Pict))
 ;; - 'elem-post : (Listof (Pict -> Pict))
 
@@ -115,7 +115,7 @@
     [(roman) (hash-set istyle 'text-base s)]
     [(larger) (hash-set istyle 'scale (* 3/2 (hash-ref istyle 'scale 1)))]
     [(smaller) (hash-set istyle 'scale (* 2/3 (hash-ref istyle 'scale 1)))]
-    [("RktBlk") (hash-set* istyle 'text-base 'modern 'keep-whitespace? #t)]
+    [("RktBlk") (hash-set* istyle 'text-base 'modern 'white-space 'pre)]
     [("RktCmt") (hash-set* istyle 'text-base 'modern 'color '(#xC2 #x74 #x1F))]
     [("RktErr") (hash-set* (hash-cons istyle 'text-mods 'italic)
                            'text-base 'modern 'color "red")]
@@ -144,7 +144,7 @@
     [("highlighted") (hash-set istyle 'bgcolor '(#xFF #xEE #xEE))]
     [("Rfiletitle") (hash-set istyle 'bgcolor '(#xEE #xEE #xEE))]
     [("SCentered") (hash-set istyle 'block-halign 'center)]
-    [(hspace) (hash-set* istyle 'text-base 'modern 'keep-whitespace? #t)]
+    [(hspace) (hash-set* istyle 'text-base 'modern 'white-space 'pre)]
     [(#f) istyle]
     [else
      (log-scribble-slideshow-warning "add-style: ignoring: ~e" s)
