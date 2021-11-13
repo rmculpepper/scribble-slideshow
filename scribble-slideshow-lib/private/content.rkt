@@ -222,9 +222,7 @@
   (define rfs (content->rfragments content istyle))
   (define fv (rfragments->vector rfs istyle))
   (define breaks (linebreak2 fv istyle width))
-  (eprintf "width = ~s, breaks = ~e\n" width breaks)
-  (define lines (get-lines fv breaks))
-  ;; (eprintf "lines = ~e\n" lines)
+  (define lines (get-lines width fv breaks))
   (apply vl-append (get-line-sep istyle) lines))
 
 (struct soft-hyphen (istyle) #:prefab)
@@ -266,7 +264,7 @@
   (match-define (lbst inkw wsw breaks badness) st)
   (match f
     ['nl
-     (list (lbst 0 #f (cons index breaks)
+     (list (lbst 0 #f (cons (add1 index) breaks)
                  (+ badness (line-badness width inkw #f))))]
     [(soft-hyphen p)
      (define pw (pict-width p))
@@ -295,25 +293,68 @@
   (+ (if (zero? under) 0 (+ (expt under 2) 0))
      (if (zero? over)  0 (+ (expt over 3)  (* width 1/4)))))
 
-(define (get-lines fv breaks)
+(define (get-lines width fv breaks)
   (let loop ([start 0] [breaks breaks])
     (match breaks
-      ['() (list (get-line fv start (vector-length fv)))]
+      ['() (list (get-line width fv start (vector-length fv) #t))]
       [(cons break breaks)
-       (cons (get-line fv start break)
+       (cons (get-line width fv start break #f)
              (loop break breaks))])))
 
-(define (get-line fv start end)
-  (let ([start
-         (let loop ([start start])
-           (cond [(and (< start end) (eq? (vector-ref fv start) 'nl))
-                  (loop (add1 start))]
-                 [else start]))])
+;; FIXME: last? doesn't get case where line ends in explicit 'nl
+;; FIXME: store line info instead of recalculating?
+
+(define (ws-fragment? f)
+  (or (eq? f 'nl) (and (fragment? f) (fragment-ws f) #t)))
+
+(define (get-line width fv start end last?)
+  (let ([short? (or last? (eq? 'nl (vector-ref fv (sub1 end))))]
+        [start (let loop ([start start])
+                 (cond [(and (< start end) (ws-fragment? (vector-ref fv start)))
+                        (loop (add1 start))]
+                       [else start]))]
+        [end (let loop ([end end])
+               (cond [(and (< start end) (ws-fragment? (vector-ref fv (sub1 end))))
+                      (loop (sub1 end))]
+                     [else end]))])
+    (define fs
+      (for/fold ([acc null] #:result (reverse acc))
+                ([f (in-vector fv start end)] [index (in-naturals)])
+        (match f
+          [(soft-hyphen p) (if (= (add1 index) end) (cons (fragment p #f) acc) acc)]
+          [(? fragment? f) (cons f acc)])))
+    (define-values (inkw wsw)
+      (for/fold ([inkw 0] [wsw 0])
+                ([f (in-vector fv start end)] [index (in-naturals)])
+        (match f
+          [(soft-hyphen p)
+           (cond [(= (add1 index) end)
+                  (values (+ inkw (pict-width p)) wsw)]
+                 [else (values inkw wsw)])]
+          [(fragment p 'ws)
+           (values (+ inkw (pict-width p)) (+ wsw (pict-width p)))]
+          [(fragment p #f)
+           (values (+ inkw (pict-width p)) wsw)])))
+    #;(
+      (for/fold ([inkw 0] [wsw 0])
+                ([f (in-list fs)])
+        (match-define (fragment p wsmode) f)
+        (values (+ inkw (pict-width p)) (+ wsw (if wsmode (pict-width p) 0)))))
+    (define wsscale0 ;; wsscale * wsw + (inkw - wsw) = width
+      (if last? 1 (/ (- width (- inkw wsw)) (if (zero? wsw) 0.0 wsw))))
+    (define wsscale (min MAX-STRETCH (max MIN-COMPRESS wsscale0)))
     (apply hbl-append
-           (let loop ([start start])
-             (cond [(< start end)
-                    (match (vector-ref fv start)
-                      [(fragment p _) (cons p (loop (add1 start)))]
-                      [(soft-hyphen p) (if (= (add1 start) end) (list p) (loop (add1 start)))]
-                      [else (loop (add1 start))])]
-                   [else null])))))
+           (for/fold ([acc null] #:result (reverse acc))
+                     ([f (in-vector fv start end)] [index (in-naturals)])
+             (match f
+               [(soft-hyphen p) (if (= (add1 index) end) (cons p acc) acc)]
+               [(fragment p 'ws) (cons (scale p wsscale 1) acc)]
+               [(fragment p #f) (cons p acc)]))
+           #;
+           (for/list ([f (in-list fs)])
+             (match f
+               [(fragment p 'ws) (scale p wsscale 1)]
+               [(fragment p #f) p])))))
+
+(define MIN-COMPRESS 0.8)
+(define MAX-STRETCH 2.5)
