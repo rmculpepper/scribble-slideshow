@@ -87,19 +87,40 @@
            (cons (conv-ws (substring s (caar ws-zones) (cdar ws-zones)))
                  (loop (cdar ws-zones) (cdr ws-zones)))])))
 
-;; A Fragment is one of
-;; - (fragment Pict WSMode), where a pict originating
-;;   from a string either contains no whitespace or only whitespace,
+;; ------------------------------------------------------------
+
+;; An Item is one of
+;; - (Box (Listof Pict) Real)
+;; - (Glue (Listof Pict) Real Real Real)
+;; - (Penalty (Listof Pict) Real Real)
 ;; - 'nl
-(struct fragment (pict ws) #:prefab)
-(struct fragment:string fragment (str istyle) #:prefab)
+(struct Box (ps w) #:prefab)
+(struct Glue (ps w stretch shrink) #:prefab)
+(struct Penalty (ps w penalty) #:prefab)
 
-;; A WSMode is one of
-;; - 'ws    -- soft whitespace: can break line, dropped at EOL
-;; - #f     -- not whitespace: cannot break, cannot drop
+(define STRETCH 2)
+(define SHRINK 1/2)
 
-;; content->rfragments : Content IStyle -> (Listof Fragment), reversed
-(define (content->rfragments content istyle)
+(define (make-box pict)
+  (Box (list pict) (pict-width pict)))
+
+(define (make-glue ws-pict)
+  (let ([w (pict-width ws-pict)])
+    (Glue (list ws-pict) w (* w STRETCH) (* w SHRINK))))
+
+(define (make-hyphen-penalty hyphen-pict)
+  (define pw (pict-width hyphen-pict))
+  (Penalty (list hyphen-pict) pw (* HYPHEN-PENALTY pw)))
+
+(define HYPHEN-PENALTY 4) ;; ??
+
+(define break-ok (Penalty null 0 0))
+
+;; content->items : Content IStyle -> (Listof Item)
+(define (content->items content istyle)
+  (coalesce/reverse-items (content->reversed-items content istyle)))
+
+(define (content->reversed-items content istyle)
   (define (loop content acc istyle)
     (match content
       [(? string?)
@@ -112,19 +133,18 @@
                 (case wsmode
                   [(pre nowrap)
                    ;; keep whitespace; cannot break line
-                   (cons (fragment seg-pict #f) acc)]
+                   (cons (make-box seg-pict) acc)]
                   [(pre-wrap)
                    ;; keep whitespace, can break line before/after
-                   (define nws (fragment (blank) 'ws))
-                   (list* nws (fragment seg-pict #f) nws acc)]
-                  [(#f) (cons (fragment seg-pict 'ws) acc)]
-                  [else (error 'content->fragments "unhandled wsmode ~e" wsmode)])]
+                   (list* break-ok (make-box seg-pict) break-ok acc)]
+                  [(#f) (cons (make-glue seg-pict) acc)]
+                  [else (error 'content->items "unhandled wsmode ~e" wsmode)])]
                [(regexp-match? #rx"[\u00AD]" seg)
-                (cons (fragment:string (base-content->pict seg istyle) #f seg istyle) acc)]
+                (append (reverse (hyphenations seg istyle)) acc)]
                [else
-                (cons (fragment (base-content->pict seg istyle) #f) acc)]))]
+                (cons (make-box (base-content->pict seg istyle)) acc)]))]
       [(? symbol? s) (loop (content-symbol->string s) acc istyle)]
-      [(? pict? p) (cons (fragment (base-content->pict p istyle) #f) acc)]
+      [(? pict? p) (cons (make-box (base-content->pict p istyle)) acc)]
       [(s:element 'newline '("\n")) (cons 'nl acc)]
       [(s:element style content)
        (loop content acc (add-style style istyle))]
@@ -147,85 +167,95 @@
       [_ (error 'content->rfragments "bad content: ~e" content)]))
   (loop content null istyle))
 
+(define (hyphenations str istyle)
+  (define hyphen-penalty (make-hyphen-penalty (base-content->pict "-" istyle)))
+  (define parts (map (lambda (s) (make-box (base-content->pict s istyle)))
+                     (string-split str "\U00AD" #:trim? #f)))
+  (add-between parts hyphen-penalty))
+
+(define (coalesce/reverse-items is)
+  (define (loop is acc)
+    (match is
+      [(cons (Box bps bw) is)
+       (box-loop is acc bps bw)]
+      [(cons (Glue gps gw gstr gshr) is)
+       (glue-loop is acc gps gw gstr gshr)]
+      [(cons it is)
+       (loop is (cons it acc))]
+      ['() acc]))
+  (define (box-loop is acc ps w)
+    (match is
+      [(cons (Box bps bw) is)
+       (box-loop is acc (append bps ps) (+ w bw))]
+      [_ (loop is (cons (Box ps w) acc))]))
+  (define (glue-loop is acc ps w str shr)
+    (match is
+      ;; FIXME: assumes all glue has same stretch/shrink factor
+      [(cons (Glue gps gw gstr gshr) is)
+       (glue-loop is acc (append gps ps) (+ w gw) (+ str gstr) (+ shr gshr))]
+      [_ (loop is (cons (Glue ps w str shr) acc))]))
+  (loop is null))
+
+(define (inset/w w p)
+  (define dw (if (rational? w) (- w (pict-width p)) 0))
+  (inset (frame #:color "lightblue" (inset p 0 0 dw 0)) 0 0 (- dw) 0))
+
 ;; ------------------------------------------------------------
+;; Greedy linebreaking
 
-(define (content->pict/v1 content istyle width)
-  (define fs1 (content->rfragments content istyle))
-  (define fs2 (coalesce-rfragments fs1))
-  (define lines (linebreak-fragments fs2 width))
-  (apply vl-append (get-line-sep istyle) lines))
-
-;; Linebreaking algorithm:
-;;
-;; 1. Split strings into atomic fragments. A string fragment is either
-;; all whitespace or whitespace-free.
-;;
-;; 2. Coalesce unbreakable sequences of fragments. A sequence of
-;; fragments can be broken only before or after whitespace
-;; fragment. FIXME: could add more breaking options, but easy to add
-;; whitespace, so why bother?
-;;
-;; 3. Pack lines using unbreakable sequences.
-
-;; FIXME: handle @|?-|, soft hyphen
 ;; FIXME: handle @nonbreaking{..}, 'no-break style
 
-;; coalesce-rfragments : (Listof Fragment) -> (Listof Fragment), reversed
-(define (coalesce-rfragments fs)
-  (define (combine-inner ps) (apply hbl-append 0 ps))
-  ;;(define (mark p) (frame p #:color "lightblue"))
-  (define (outer-loop fs outer-acc)
-    (match fs
-      [(cons (and f (fragment p ws)) fs)
-       (inner-loop ws fs (list p) outer-acc)]
-      [(cons 'nl fs)
-       (outer-loop fs (cons 'nl outer-acc))]
-      ['() outer-acc]))
-  (define (inner-loop ws fs inner-acc outer-acc)
-    (match fs
-      [(cons (fragment p (== ws)) fs)
-       (inner-loop ws fs (cons p inner-acc) outer-acc)]
-      [_ (outer-loop fs (cons (fragment (combine-inner inner-acc) ws) outer-acc))]))
-  (outer-loop fs null))
+(define (content->pict/v1 content istyle width)
+  (define is (content->items content istyle))
+  (define lines (linebreak-items/v1 is width))
+  (inset/w width (apply vl-append (get-line-sep istyle) lines)))
 
-;; linebreak-fragments : (Listof Fragment) PositiveReal -> (Listof Pict)
-;; Note: this assumes adjacent non-ws fragments have already been coalesced.
-(define (linebreak-fragments fs width)
-  (define (outer-loop fs outer-acc)
-    (match fs
+;; linebreak-items/v1 : (Listof Item) PositiveReal -> (Listof Pict)
+;; Note: this assumes adjacent non-ws boxes have already been coalesced.
+(define (linebreak-items/v1 is width)
+  (define (outer-loop is outer-acc)
+    (match is
       ['() (reverse outer-acc)]
-      [(cons (fragment _ 'ws) fs) ;; drop ws at start of line
-       (outer-loop fs outer-acc)]
-      [fs ;; starts with non-ws fragment
-       (inner-loop fs null 0 #f outer-acc)]))
-  (define (inner-loop fs0 acc accw wsw outer-acc)
-    (define (line)
-      (let ([acc (if wsw (cdr acc) acc)])
-        (apply hbl-append 0 (reverse acc))))
-    (match fs0
-      [(cons 'nl fs)
-       (outer-loop fs (cons (line) outer-acc))]
-      [(cons (fragment p ws?) fs)
-       (define pw (pict-width p))
-       (cond [(or (<= (+ accw pw) width) ;; line still has space
-                  (and (zero? accw) (not ws?))) ;; too long, but can't break
-              (inner-loop fs (cons p acc) (+ accw pw) (if ws? pw #f) outer-acc)]
+      [(cons (? Glue?) is) ;; drop glue at start of line
+       (outer-loop is outer-acc)]
+      [(cons (? Penalty?) is) ;; drop penalty at start of line
+       (outer-loop is outer-acc)]
+      [is ;; starts with non-ws item
+       (inner-loop is outer-acc null 0 null 0 #f)]))
+  (define (inner-loop is0 outer-acc acc accw wsacc wsw ws?)
+    (define (line [acc acc]) (apply hbl-append 0 (reverse acc)))
+    (match is0
+      [(cons (Box bps bw) is)
+       (cond [(or (<= (+ accw wsw bw) width) ;; line still has space
+                  (null? acc)   ;; too long, but nothing to break!
+                  (not ws?))    ;; too long, but not at break point (after ws)
+              (let ([acc (append (reverse bps) wsacc acc)] [accw (+ accw wsw bw)])
+                (inner-loop is outer-acc acc accw null 0 #f))]
              [else
-              (outer-loop fs0 (cons (line) outer-acc))])]
+              (outer-loop is0 (cons (line) outer-acc))])]
+      [(cons (Glue gps gw _ _) is)
+       (inner-loop is outer-acc acc accw (append (reverse gps) wsacc) (+ wsw gw) #t)]
+      [(cons (Penalty pps pw ppenalty) is)
+       (match is  ;; lookahead
+         [(cons (Box bps bw) _)
+          (cond [(> (+ accw wsw bw) width)
+                 (outer-loop is (cons (line (append (reverse pps) wsacc acc)) outer-acc))]
+                [else (inner-loop is outer-acc acc accw wsacc wsw ws?)])]
+         [_ (inner-loop is outer-acc acc accw wsacc wsw ws?)])]
+      [(cons 'nl is)
+       (outer-loop is (cons (line) outer-acc))]
       ['()
-       (outer-loop null (cons (line) outer-acc))]))
-  (outer-loop fs null))
+       (outer-loop '() (cons (line) outer-acc))]))
+  (outer-loop is null))
 
 ;; ------------------------------------------------------------
+;; Justified
 
 (define (content->pict/v2 content istyle width)
-  (define rfs (content->rfragments content istyle))
-  (define fv (rfragments->vector rfs istyle))
-  (define breaks (linebreak2 fv istyle width))
-  (define lines (get-lines width fv breaks))
-  (apply vl-append (get-line-sep istyle) lines))
-
-(struct soft-hyphen (istyle) #:prefab)
+  (define iv (list->vector (content->items content istyle)))
+  (define breaks (linebreaks/v2 iv istyle width))
+  (define lines (get-lines/v2 width iv breaks))
+  (inset/w width (apply vl-append (get-line-sep istyle) lines)))
 
 (struct lbst
   (inkw     ;; Real -- width of current line to last non-ws
@@ -234,24 +264,12 @@
    badness  ;; Real -- total badness of previous lines
    ) #:prefab)
 
-(define (rfragments->vector rfs istyle)
-  (list->vector
-   (for/fold ([acc null]) ([f (in-list rfs)])
-     (match f
-       [(fragment:string p #f str istyle)
-        (define hyphen-p (base-content->pict "-" istyle))
-        (define subfs
-          (map (lambda (s) (fragment (base-content->pict s istyle) #f))
-               (string-split str "\U00AD" #:trim? #f)))
-        (append (add-between subfs (soft-hyphen hyphen-p)) acc)]
-       [_ (cons f acc)]))))
-
-(define (linebreak2 fv istyle width)
+(define (linebreaks/v2 iv istyle width)
   (define st0 (lbst 0 #f null 0))
   (define lbsts
     (for/fold ([sts (list st0)])
-              ([f (in-vector fv)] [index (in-naturals)])
-      (cut-lbsts width (append* (for/list ([st (in-list sts)]) (next-lbst index st f width))))))
+              ([it (in-vector iv)] [index (in-naturals)])
+      (cut-lbsts width (append* (for/list ([st (in-list sts)]) (next-lbst index st it width))))))
   (define sorted-lbsts (sort lbsts < #:key lbst-badness))
   (reverse (lbst-breaks (car sorted-lbsts))))
 
@@ -260,28 +278,26 @@
   (define sorted-sts (sort sts < #:key (predict-badness width)))
   (if (> (length sorted-sts) N) (take sorted-sts N) sorted-sts))
 
-(define (next-lbst index st f width)
+(define (next-lbst index st it width)
   (match-define (lbst inkw wsw breaks badness) st)
-  (match f
+  (match it
     ['nl
      (list (lbst 0 #f (cons (add1 index) breaks)
                  (+ badness (line-badness width inkw #f))))]
-    [(soft-hyphen p)
-     (define pw (pict-width p))
+    [(Penalty pps pw ppenalty)
      (list (lbst inkw wsw breaks badness)
            (lbst 0 #f (cons (add1 index) breaks)
-                 (+ badness (line-badness width (+ inkw pw)))))]
-    [(fragment p 'ws)
-     (define pw (pict-width p))
-     (list (lbst inkw (+ (or wsw 0) pw) breaks badness))]
-    [(fragment p #f)
-     (define pw (pict-width p))
-     (append
-      (list (lbst (+ inkw (or wsw 0) pw) #f breaks badness))
-      (cond [(zero? inkw) null] ;; can't break, no ink on current line
-            [(not wsw) null]    ;; can't break, not after ws
-            [else (list (lbst pw #f (cons index breaks)
-                              (+ badness (line-badness width inkw))))]))]))
+                 (+ badness ppenalty (line-badness width (+ inkw (or wsw 0) pw)))))]
+    [(Glue gps gw gstr gshr)
+     (list (lbst inkw (+ (or wsw 0) gw) breaks badness))]
+    [(Box bps bw)
+     (define (continue) (lbst (+ inkw (or wsw 0) bw) #f breaks badness))
+     (define (break) (lbst bw #f (cons index breaks) (+ badness (line-badness width inkw))))
+     (cond [(zero? inkw) ;; can't break, no ink on current line yet
+            (list (continue))]
+           [(not wsw)  ;; can't break, not after ws
+            (list (continue))]
+           [else (list (continue) (break))])]))
 
 (define ((predict-badness width) st)
   (match-define (lbst inkw wsw breaks badness) st)
@@ -290,10 +306,11 @@
 (define (line-badness width inkw [under-bad? #t])
   (define over (max 0 (- inkw width)))
   (define under (if under-bad? (max 0 (- width inkw)) 0))
-  (+ (if (zero? under) 0 (+ (expt under 2) 0))
-     (if (zero? over)  0 (+ (expt over 3)  (* width 1/4)))))
+  (+ (expt over 3) (expt under 2)))
 
-(define (get-lines width fv breaks)
+;; FIXME: calibrate wrt hyphen penalty
+
+(define (get-lines/v2 width fv breaks)
   (let loop ([start 0] [breaks breaks])
     (match breaks
       ['() (list (get-line width fv start (vector-length fv) #t))]
@@ -301,60 +318,45 @@
        (cons (get-line width fv start break #f)
              (loop break breaks))])))
 
-;; FIXME: last? doesn't get case where line ends in explicit 'nl
-;; FIXME: store line info instead of recalculating?
-
-(define (ws-fragment? f)
-  (or (eq? f 'nl) (and (fragment? f) (fragment-ws f) #t)))
-
-(define (get-line width fv start end last?)
-  (let ([short? (or last? (eq? 'nl (vector-ref fv (sub1 end))))]
+(define (get-line width iv start end last?)
+  (define (get-item index) (vector-ref iv index))
+  (let ([short? (or last? (eq? 'nl (get-item (sub1 end))))]
         [start (let loop ([start start])
-                 (cond [(and (< start end) (ws-fragment? (vector-ref fv start)))
-                        (loop (add1 start))]
-                       [else start]))]
+                 (if (and (< start end) (ws-item? (get-item start)))
+                     (loop (add1 start))
+                     start))]
         [end (let loop ([end end])
-               (cond [(and (< start end) (ws-fragment? (vector-ref fv (sub1 end))))
-                      (loop (sub1 end))]
-                     [else end]))])
-    (define fs
-      (for/fold ([acc null] #:result (reverse acc))
-                ([f (in-vector fv start end)] [index (in-naturals)])
-        (match f
-          [(soft-hyphen p) (if (= (add1 index) end) (cons (fragment p #f) acc) acc)]
-          [(? fragment? f) (cons f acc)])))
-    (define-values (inkw wsw)
-      (for/fold ([inkw 0] [wsw 0])
-                ([f (in-vector fv start end)] [index (in-naturals)])
-        (match f
-          [(soft-hyphen p)
-           (cond [(= (add1 index) end)
-                  (values (+ inkw (pict-width p)) wsw)]
-                 [else (values inkw wsw)])]
-          [(fragment p 'ws)
-           (values (+ inkw (pict-width p)) (+ wsw (pict-width p)))]
-          [(fragment p #f)
-           (values (+ inkw (pict-width p)) wsw)])))
-    #;(
-      (for/fold ([inkw 0] [wsw 0])
-                ([f (in-list fs)])
-        (match-define (fragment p wsmode) f)
-        (values (+ inkw (pict-width p)) (+ wsw (if wsmode (pict-width p) 0)))))
-    (define wsscale0 ;; wsscale * wsw + (inkw - wsw) = width
-      (if last? 1 (/ (- width (- inkw wsw)) (if (zero? wsw) 0.0 wsw))))
-    (define wsscale (min MAX-STRETCH (max MIN-COMPRESS wsscale0)))
-    (apply hbl-append
-           (for/fold ([acc null] #:result (reverse acc))
-                     ([f (in-vector fv start end)] [index (in-naturals)])
-             (match f
-               [(soft-hyphen p) (if (= (add1 index) end) (cons p acc) acc)]
-               [(fragment p 'ws) (cons (scale p wsscale 1) acc)]
-               [(fragment p #f) (cons p acc)]))
-           #;
-           (for/list ([f (in-list fs)])
-             (match f
-               [(fragment p 'ws) (scale p wsscale 1)]
-               [(fragment p #f) p])))))
+               (if (and (< start end) (ws-item? (get-item (sub1 end))))
+                   (loop (sub1 end))
+                   end))])
+    (define-values (totw wsw)
+      (for/fold ([totw 0] [wsw 0])
+                ([it (in-vector iv start end)] [index (in-naturals)])
+        (match it
+          [(Penalty _ pw _)
+           (if (= (add1 index) end)
+               (values (+ totw pw) wsw)
+               (values totw wsw))]
+          [(Glue _ gw _ _)
+           (values (+ totw gw) (+ wsw gw))]
+          [(Box _ bw)
+           (values (+ totw bw) wsw)])))
+    (define wsscale0 ;; wsscale * wsw + inkw = width
+      (let ([inkw (- totw wsw)])
+        (cond [(zero? wsw) 1]
+              [else (/ (- width inkw) wsw)])))
+    (define wsscale (min (if short? 1 MAX-STRETCH) (max MIN-COMPRESS wsscale0)))
+    (define picts
+      (for/fold ([acc null] #:result (append* (reverse acc)))
+                ([it (in-vector iv start end)] [index (in-naturals)])
+        (match it
+          [(Penalty pps _ _) (if (= (add1 index) end) (cons pps acc) acc)]
+          [(Glue gps _ _ _) (cons (map (lambda (p) (scale p wsscale 1)) gps) acc)]
+          [(Box bps _) (cons bps acc)])))
+    (apply hbl-append 0 picts)))
 
-(define MIN-COMPRESS 0.8)
+(define (ws-item? it)
+  (or (Glue? it) (eq? it 'nl)))
+
+(define MIN-COMPRESS 0.6)
 (define MAX-STRETCH 2.5)
