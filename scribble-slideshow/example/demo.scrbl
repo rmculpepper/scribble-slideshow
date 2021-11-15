@@ -183,7 +183,7 @@ cromulent), an exception is raised.}
 
 @section{More Racket formatting}
 
-To apply pict functions (such as @racket[frame]) to rendered Scribble, you can
+To apply pict functions (such as @racket[frame]) to ren@|?-|dered Scribble, you can
 use @racket[flow-pict] to turn a Scribble flow into a pict.
 
 @p:frame[
