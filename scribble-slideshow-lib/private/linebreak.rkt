@@ -144,10 +144,7 @@
 
     (define/public (go)
       (define result (go*))
-      (and result
-           (let loop ([n result] [acc null])
-             (define next (node-previous n))
-             (if next (loop next (cons (node-position n) acc)) acc))))
+      (and result (node->lines result)))
 
     (define/public (go*)
       (define anode0 (initial-node))
@@ -157,9 +154,6 @@
           (eprintf "b = ~s, active(~s) = ~e\n" b (length active) active)
           (update-active-breakpoints active b)))
       (and (pair? final-active) (argmin node-totdemerits final-active)))
-
-    (define/public (initial-node)
-      (node -1 0 0 1 0 #f))
 
     (define/private (update-active-breakpoints active b)
       ;; body of main loop
@@ -177,10 +171,10 @@
         (append (best-feasible-breaks feasible) active)))
 
     (define/private (make-break anode b r)
-      (match-define (node a aafter aline afitness atotdemerits _) anode)
+      (match-define (node a aafter aline ar afitness atotdemerits _) anode)
       (define bfitness (adjustment-ratio->class r))
       (define bdemerits (line-demerits anode b r bfitness))
-      (node b (after b) (add1 aline) bfitness (+ atotdemerits bdemerits) anode))
+      (node b (after b) (add1 aline) r bfitness (+ atotdemerits bdemerits) anode))
 
     (define (best-feasible-breaks feasible)
       ;; (p1159) Select at most one break per fitness, since we fix q=0.
@@ -199,16 +193,25 @@
   (position     ;; Nat/-1 -- index of breakpoint (-1 means start of paragraph)
    after        ;; Nat -- after(position) = start of next line
    line         ;; Nat -- number of line ending here
-   fitness      ;; fitness class of line ending here
+   adjratio     ;; Real -- adjustment ratio
+   fitness      ;; {0,1,2,3} -- fitness class of line ending here
    totdemerits  ;; Real -- total demerits up to this breakpoint
    previous     ;; Node/#f -- link to previous breakpoint
    ) #:transparent)
+
+(define (initial-node)
+  (node -1 0 0 1 1 0 #f))
 
 ;; FIXME: store adjustment-ratio in node!
 
 (define (node<? x y)
   (let ([xline (node-line x)] [yline (node-line y)])
     (or (< xline yline) (and (= xline yline) (< (node-fitness x) (node-fitness y))))))
+
+(define (node->lines n)
+  (let loop ([n n] [acc null])
+    (define next (node-previous n))
+    (if next (loop next (cons (list (node-position n) (node-adjratio n)) acc)) acc)))
 
 (define (cumsum f argv)
   (define len (vector-length argv))
@@ -224,13 +227,14 @@
 ;; ------------------------------------------------------------
 
 (define sp (Glue " " 6 3 2))
-(define words (for/list ([i (in-range 20)])
+(define words (for/list ([i (in-range 50)])
                 (define len (modulo (sqr i) 6))
                 (Box (make-string len #\x) (* len 6))))
-(define items (append (add-between words sp) (list (Penalty "!" 0 -inf.0 #f))))
+(define items (append (add-between words sp)
+                      (list (Glue "\n" 0 10000 0) (Penalty "!" 0 -inf.0 #f))))
 (define itemv (list->vector items))
 ;;itemv
 
-(define para (new para% (items itemv) (targetw 50)))
+(define para (new para% (items itemv) (targetw 200)))
 
 (send para go)
