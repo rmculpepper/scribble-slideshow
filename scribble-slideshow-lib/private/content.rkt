@@ -13,7 +13,11 @@
          "style.rkt")
 (provide (all-defined-out))
 
-;; ------------------------------------------------------------
+(define (content->pict content istyle width)
+  (content->pict/v2 content istyle width))
+
+
+;; ============================================================
 ;; Content
 
 ;; A Content is one of
@@ -22,9 +26,6 @@
 ;; - (element Style Content)
 ;; - Pict or PictConvertible
 ;; - (Listof Content)
-
-(define (content->pict content istyle width)
-  (content->pict/v2 content istyle width))
 
 (define (content-symbol->string sym)
   (case sym
@@ -88,33 +89,30 @@
                  (loop (cdar ws-zones) (cdr ws-zones)))])))
 
 ;; ------------------------------------------------------------
+;; Specialize linebreaking support to picts
 
-;; An Item is one of
-;; - (Box (Listof Pict) Real)
-;; - (Glue (Listof Pict) Real Real Real)
-;; - (Penalty (Listof Pict) Real Real)
-;; - 'nl
-(struct Box (ps w) #:prefab)
-(struct Glue (ps w stretch shrink) #:prefab)
-(struct Penalty (ps w penalty) #:prefab)
+(define (make-box p)
+  (Box p (pict-width p)))
 
-(define STRETCH 2)
-(define SHRINK 1/2)
+(define STRETCH 1/2)
+(define SHRINK 1/3)
 
-(define (make-box pict)
-  (Box (list pict) (pict-width pict)))
-
-(define (make-glue ws-pict)
-  (let ([w (pict-width ws-pict)])
-    (Glue (list ws-pict) w (* w STRETCH) (* w SHRINK))))
+(define (make-glue wsp)
+  (let ([w (pict-width wsp)])
+    (Glue ws-pict w (* w STRETCH) (* w SHRINK))))
 
 (define (make-hyphen-penalty hyphen-pict)
   (define pw (pict-width hyphen-pict))
-  (Penalty (list hyphen-pict) pw (* HYPHEN-PENALTY pw)))
+  (Penalty hyphen-pict pw (* HYPHEN-PENALTY pw) #t))
 
-(define HYPHEN-PENALTY 4) ;; ??
+(define HYPHEN-PENALTY 10) ;; ??
 
-(define break-ok (Penalty null 0 0))
+(define break-ok (Penalty (blank) 0 0 #f))
+
+;; ------------------------------------------------------------
+
+
+
 
 ;; content->items : Content IStyle -> (Listof Item)
 (define (content->items content istyle)
@@ -127,6 +125,7 @@
        (define wsmode (hash-ref istyle 'white-space #f))
        (for/fold ([acc acc]) ([seg (in-list (string->segments content wsmode))])
          (cond [(equal? seg "\n")
+                ;; FIXME: depends on ...
                 (cons 'nl acc)]
                [(regexp-match? #rx"^[ \t]+$" seg)
                 (define seg-pict (base-content->pict seg istyle))
@@ -137,9 +136,12 @@
                   [(pre-wrap)
                    ;; keep whitespace, can break line before/after
                    (list* break-ok (make-box seg-pict) break-ok acc)]
-                  [(#f) (cons (make-glue seg-pict) acc)]
+                  [(#f)
+                   ;; FIXME: get stretch/shrink from istyle
+                   (cons (make-glue seg-pict) acc)]
                   [else (error 'content->items "unhandled wsmode ~e" wsmode)])]
                [(regexp-match? #rx"[\u00AD]" seg)
+                ;; FIXME: get hyphenation mode from istyle
                 (append (reverse (hyphenations seg istyle)) acc)]
                [else
                 (cons (make-box (base-content->pict seg istyle)) acc)]))]
@@ -258,13 +260,24 @@
   (inset/w width (apply vl-append (get-line-sep istyle) lines)))
 
 (struct lbst
-  (inkw     ;; Real -- width of current line to last non-ws
+  (index    ;; Nat -- current index
+   lastbr   ;; Nat -- previous break index
+   linew    ;; Real -- width of current line to last non-ws
    wsw      ;; Real/#f -- width of ws at end of current line
-   breaks   ;; (Listof Nat) -- list of breaks; N means break line *before* fragment N
    badness  ;; Real -- total badness of previous lines
    ) #:prefab)
 
+(struct break
+  (index    ;; Nat -- N means break line *before* item N
+   lastbr   ;; Nat -- previous break
+   linew    ;; Real -- width of current line to last non-ws item
+   linebad  ;; Real -- badness of current line
+   ) #:prefab)
+
+;; A BreakTable is Hash[Nat => Break], stores least-badness break so far.
+
 (define (linebreaks/v2 iv istyle width)
+  (define btable (make-hasheqv))
   (define st0 (lbst 0 #f null 0))
   (define lbsts
     (for/fold ([sts (list st0)])
