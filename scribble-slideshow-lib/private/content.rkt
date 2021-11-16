@@ -10,12 +10,12 @@
          (prefix-in s: scribble/latex-properties)
          (prefix-in s: scribble/decode)
          pict pict/convert
-         "style.rkt")
+         "style.rkt"
+         "linebreak.rkt")
 (provide (all-defined-out))
 
 (define (content->pict content istyle width)
-  (content->pict/v2 content istyle width))
-
+  (content->pict/v3 content istyle width))
 
 ;; ============================================================
 ;; Content
@@ -99,7 +99,7 @@
 
 (define (make-glue wsp)
   (let ([w (pict-width wsp)])
-    (Glue ws-pict w (* w STRETCH) (* w SHRINK))))
+    (Glue wsp w (* w STRETCH) (* w SHRINK))))
 
 (define (make-hyphen-penalty hyphen-pict)
   (define pw (pict-width hyphen-pict))
@@ -109,14 +109,19 @@
 
 (define break-ok (Penalty (blank) 0 0 #f))
 
+;; Hack! This pict is recognized by get-line/v3 and not scaled, to
+;; avoid filling last line. FIXME: handle justify/align better
+(define blank/eol (blank))
+
+(define reversed-newline-items
+  (list (Penalty (blank) 0 -inf.0 #f) (Glue blank/eol 0 #e1e6 0)))
+
 ;; ------------------------------------------------------------
 
-
-
-
 ;; content->items : Content IStyle -> (Listof Item)
-(define (content->items content istyle)
-  (coalesce/reverse-items (content->reversed-items content istyle)))
+(define (content->items content istyle [coalesce? #f])
+  (define ritems (content->reversed-items content istyle))
+  (if coalesce? (coalesce/reverse-items ritems) (reverse ritems)))
 
 (define (content->reversed-items content istyle)
   (define (loop content acc istyle)
@@ -126,7 +131,7 @@
        (for/fold ([acc acc]) ([seg (in-list (string->segments content wsmode))])
          (cond [(equal? seg "\n")
                 ;; FIXME: depends on ...
-                (cons 'nl acc)]
+                (append reversed-newline-items acc)]
                [(regexp-match? #rx"^[ \t]+$" seg)
                 (define seg-pict (base-content->pict seg istyle))
                 (case wsmode
@@ -167,7 +172,7 @@
        (for/fold ([acc acc]) ([part (in-list content)])
          (loop part acc istyle))]
       [_ (error 'content->rfragments "bad content: ~e" content)]))
-  (loop content null istyle))
+  (append reversed-newline-items (loop content null istyle)))
 
 (define (hyphenations str istyle)
   (define hyphen-penalty (make-hyphen-penalty (base-content->pict "-" istyle)))
@@ -178,29 +183,29 @@
 (define (coalesce/reverse-items is)
   (define (loop is acc)
     (match is
-      [(cons (Box bps bw) is)
-       (box-loop is acc bps bw)]
-      [(cons (Glue gps gw gstr gshr) is)
-       (glue-loop is acc gps gw gstr gshr)]
+      [(cons (Box bp bw) is)
+       (box-loop is acc (list bp) bw)]
+      [(cons (Glue gp gw gstr gshr) is)
+       (glue-loop is acc (list gp) gw gstr gshr)]
       [(cons it is)
        (loop is (cons it acc))]
       ['() acc]))
   (define (box-loop is acc ps w)
     (match is
-      [(cons (Box bps bw) is)
-       (box-loop is acc (append bps ps) (+ w bw))]
-      [_ (loop is (cons (Box ps w) acc))]))
+      [(cons (Box bp bw) is)
+       (box-loop is acc (cons bp ps) (+ w bw))]
+      [_ (loop is (cons (Box (apply hbl-append 0 ps) w) acc))]))
   (define (glue-loop is acc ps w str shr)
     (match is
       ;; FIXME: assumes all glue has same stretch/shrink factor
-      [(cons (Glue gps gw gstr gshr) is)
-       (glue-loop is acc (append gps ps) (+ w gw) (+ str gstr) (+ shr gshr))]
-      [_ (loop is (cons (Glue ps w str shr) acc))]))
+      [(cons (Glue gp gw gstr gshr) is)
+       (glue-loop is acc (cons gp ps) (+ w gw) (+ str gstr) (+ shr gshr))]
+      [_ (loop is (cons (Glue (apply hbl-append 0 ps) w str shr) acc))]))
   (loop is null))
 
-(define (inset/w w p)
+(define (inset/w w color p)
   (define dw (if (rational? w) (- w (pict-width p)) 0))
-  (inset (frame #:color "lightblue" (inset p 0 0 dw 0)) 0 0 (- dw) 0))
+  (inset (frame #:color color (inset p 0 0 dw 0)) 0 0 (- dw) 0))
 
 ;; ------------------------------------------------------------
 ;; Greedy linebreaking
@@ -208,9 +213,9 @@
 ;; FIXME: handle @nonbreaking{..}, 'no-break style
 
 (define (content->pict/v1 content istyle width)
-  (define is (content->items content istyle))
+  (define is (content->items content istyle #t))
   (define lines (linebreak-items/v1 is width))
-  (inset/w width (apply vl-append (get-line-sep istyle) lines)))
+  (inset/w width "pink" (apply vl-append (get-line-sep istyle) lines)))
 
 ;; linebreak-items/v1 : (Listof Item) PositiveReal -> (Listof Pict)
 ;; Note: this assumes adjacent non-ws boxes have already been coalesced.
@@ -227,25 +232,25 @@
   (define (inner-loop is0 outer-acc acc accw wsacc wsw ws?)
     (define (line [acc acc]) (apply hbl-append 0 (reverse acc)))
     (match is0
-      [(cons (Box bps bw) is)
+      [(cons (Box bp bw) is)
        (cond [(or (<= (+ accw wsw bw) width) ;; line still has space
                   (null? acc)   ;; too long, but nothing to break!
                   (not ws?))    ;; too long, but not at break point (after ws)
-              (let ([acc (append (reverse bps) wsacc acc)] [accw (+ accw wsw bw)])
+              (let ([acc (cons bp (append wsacc acc))] [accw (+ accw wsw bw)])
                 (inner-loop is outer-acc acc accw null 0 #f))]
              [else
               (outer-loop is0 (cons (line) outer-acc))])]
-      [(cons (Glue gps gw _ _) is)
-       (inner-loop is outer-acc acc accw (append (reverse gps) wsacc) (+ wsw gw) #t)]
-      [(cons (Penalty pps pw ppenalty) is)
+      [(cons (Glue gp gw _ _) is)
+       (inner-loop is outer-acc acc accw (cons gp wsacc) (+ wsw gw) #t)]
+      [(cons (Penalty _ _ -inf.0 _) is)
+       (outer-loop is (cons (line) outer-acc))]
+      [(cons (Penalty pp pw ppenalty _) is)
        (match is  ;; lookahead
-         [(cons (Box bps bw) _)
+         [(cons (Box bp bw) _)
           (cond [(> (+ accw wsw bw) width)
-                 (outer-loop is (cons (line (append (reverse pps) wsacc acc)) outer-acc))]
+                 (outer-loop is (cons (line (cons pp (append wsacc acc))) outer-acc))]
                 [else (inner-loop is outer-acc acc accw wsacc wsw ws?)])]
          [_ (inner-loop is outer-acc acc accw wsacc wsw ws?)])]
-      [(cons 'nl is)
-       (outer-loop is (cons (line) outer-acc))]
       ['()
        (outer-loop '() (cons (line) outer-acc))]))
   (outer-loop is null))
@@ -253,6 +258,7 @@
 ;; ------------------------------------------------------------
 ;; Justified
 
+#|
 (define (content->pict/v2 content istyle width)
   (define iv (list->vector (content->items content istyle)))
   (define breaks (linebreaks/v2 iv istyle width))
@@ -373,3 +379,43 @@
 
 (define MIN-COMPRESS 0.6)
 (define MAX-STRETCH 2.5)
+|#
+
+;; ------------------------------------------------------------
+;; Justified
+
+(define (content->pict/v3 content istyle width)
+  (define iv (list->vector (content->items content istyle #f)))
+  (define breaks (get-line-breaks iv width))
+  (cond [breaks
+         (define lines (get-lines/v3 width iv breaks))
+         (inset/w width "lightblue" (apply vl-append (get-line-sep istyle) lines))]
+        [else
+         (content->pict/v1 content istyle width)]))
+
+(define (get-lines/v3 width iv lines)
+  (for/list ([ln (in-list lines)])
+    (get-line/v3 width iv ln)))
+
+(define (get-line/v3 width iv ln)
+  (match-define (line start end0 adjratio) ln)
+  (define end (if (Penalty? (vector-ref iv end0)) (add1 end0) end0))
+  (define picts
+    (for/fold ([acc null] #:result (reverse acc))
+              ([it (in-vector iv start end)] [index (in-naturals start)])
+      (match it
+        [(Penalty p _ _ _) (if (= (add1 index) end) (cons p acc) acc)]
+        [(? Glue? g) (cons (scale-glue g adjratio) acc)]
+        [(Box p _) (cons p acc)])))
+  (apply hbl-append 0 picts))
+
+(define (scale-glue g adjratio)
+  (match-define (Glue p w stretch shrink) g)
+  (define targetw
+    (cond [(= adjratio 0) w]
+          [(> adjratio 0) (+ w (* adjratio stretch))]
+          [(< adjratio 0) (+ w (* adjratio shrink))]))
+  (cond [(zero? adjratio) p]
+        [(eq? p blank/eol) p]
+        [(zero? w) (blank targetw 0)]
+        [else (scale p (/ targetw w) 1)]))
