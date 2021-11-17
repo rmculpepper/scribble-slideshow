@@ -98,9 +98,16 @@
 (define STRETCH 1/2)
 (define SHRINK 1/3)
 
-(define (make-glue wsp)
-  (let ([w (pict-width wsp)])
-    (Glue wsp w (* w STRETCH) (* w SHRINK))))
+(define (make-glue wsp mode)
+  (define w (pict-width wsp))
+  (case mode
+    [(justify)
+     (list (Glue wsp w (* w STRETCH) (* w SHRINK)))]
+    [(ragged)
+     (list disallow-break
+           (Glue (blank) 0 (* w 3) 0)
+           allow-break
+           (Glue wsp w (* w -3) 0))]))
 
 (define (make-hyphen-penalty hyphen-pict)
   (define pw (pict-width hyphen-pict))
@@ -108,7 +115,9 @@
 
 (define HYPHEN-PENALTY 10) ;; ??
 
-(define break-ok (Penalty (blank) 0 0 #f))
+(define allow-break (Penalty (blank) 0 0 #f))
+(define disallow-break (Penalty (blank) 0 +inf.0 #f))
+(define force-break (Penalty (blank) 0 -inf.0 #f))
 
 ;; Hack! This pict is recognized by get-line/v3 and not scaled, to
 ;; avoid filling last line. FIXME: handle justify/align better
@@ -117,10 +126,7 @@
 (define reversed-newline-items
   ;; Don't allow break at Glue, only at final Penalty.  (I think this
   ;; only really matters if break forced by overfull line.)
-  (reverse
-   (list (Penalty (blank) 0 +inf.0 #f)
-         (Glue blank/eol 0 #e1e6 0)
-         (Penalty (blank) 0 -inf.0 #f))))
+  (reverse (list disallow-break (Glue blank/eol 0 #e1e6 0) force-break)))
 
 ;; ------------------------------------------------------------
 
@@ -146,10 +152,10 @@
                    (cons (make-box seg-pict) acc)]
                   [(pre-wrap)
                    ;; keep whitespace, can break line before/after
-                   (list* break-ok (make-box seg-pict) break-ok acc)]
+                   (list* allow-break (make-box seg-pict) allow-break acc)]
                   [(#f)
                    ;; FIXME: get stretch/shrink from istyle
-                   (cons (make-glue seg-pict) acc)]
+                   (append (reverse (make-glue seg-pict 'justify)) acc)]
                   [else (error 'content->items "unhandled wsmode ~e" wsmode)])]
                [(regexp-match? #rx"[\u00AD]" seg)
                 ;; FIXME: get hyphenation mode from istyle
