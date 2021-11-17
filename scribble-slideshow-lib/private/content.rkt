@@ -5,6 +5,7 @@
 (require racket/match
          racket/list
          racket/string
+         racket/format
          (prefix-in s: scribble/core)
          (prefix-in s: scribble/html-properties)
          (prefix-in s: scribble/latex-properties)
@@ -114,7 +115,12 @@
 (define blank/eol (blank))
 
 (define reversed-newline-items
-  (list (Penalty (blank) 0 -inf.0 #f) (Glue blank/eol 0 #e1e6 0)))
+  ;; Don't allow break at Glue, only at final Penalty.  (I think this
+  ;; only really matters if break forced by overfull line.)
+  (reverse
+   (list (Penalty (blank) 0 +inf.0 #f)
+         (Glue blank/eol 0 #e1e6 0)
+         (Penalty (blank) 0 -inf.0 #f))))
 
 ;; ------------------------------------------------------------
 
@@ -385,19 +391,18 @@
 ;; Justified
 
 (define (content->pict/v3 content istyle width)
+  (define debug? (memq 'linebreak (hash-ref istyle 'debug null)))
   (define iv (list->vector (content->items content istyle #f)))
-  (define breaks (get-line-breaks iv width))
-  (cond [breaks
-         (define lines (get-lines/v3 width iv breaks))
-         (inset/w width "lightblue" (apply vl-append (get-line-sep istyle) lines))]
-        [else
-         (content->pict/v1 content istyle width)]))
+  (define breaks (get-line-breaks iv width #:p 10))
+  (define lines (get-lines/v3 width iv breaks debug?))
+  (define lines-p (apply vl-append (get-line-sep istyle) lines))
+  (if debug? (inset/w width "lightblue" lines-p) lines-p))
 
-(define (get-lines/v3 width iv lines)
+(define (get-lines/v3 width iv lines [debug? #f])
   (for/list ([ln (in-list lines)])
-    (get-line/v3 width iv ln)))
+    (get-line/v3 width iv ln debug?)))
 
-(define (get-line/v3 width iv ln)
+(define (get-line/v3 width iv ln [debug? #f])
   (match-define (line start end0 adjratio) ln)
   (define end (if (Penalty? (vector-ref iv end0)) (add1 end0) end0))
   (define picts
@@ -407,7 +412,12 @@
         [(Penalty p _ _ _) (if (= (add1 index) end) (cons p acc) acc)]
         [(? Glue? g) (cons (scale-glue g adjratio) acc)]
         [(Box p _) (cons p acc)])))
-  (apply hbl-append 0 picts))
+  (let ([linep (apply hbl-append 0 picts)])
+    (if debug? (debug-line linep adjratio) linep)))
+
+(define (debug-line linep adjratio)
+  (define rstr (if (rational? adjratio) (~r #:precision 2 adjratio) (~a adjratio)))
+  (pin-over linep (pict-width linep) 0 (colorize (text rstr null 10) "pink")))
 
 (define (scale-glue g adjratio)
   (match-define (Glue p w stretch shrink) g)

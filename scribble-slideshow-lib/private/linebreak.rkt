@@ -9,6 +9,10 @@
 ;; - Breaking paragraphs into lines, Donald Knuth and Michael Plass
 ;; - The errors of TEX, Donald Knuth
 
+(define (get-line-breaks items targetw #:p [p P-TOLERANCE])
+  (define para (new para% (items items) (targetw targetw) (p-tolerance p)))
+  (send para go))
+
 ;; ------------------------------------------------------------
 
 ;; An Item is one of
@@ -31,16 +35,19 @@
 
 ;; ------------------------------------------------------------
 
-(define ALPHA 1000)
-(define GAMMA 1000)
+(define HYPHEN-PENALTY 50)  ;; default penalty for hyphen (p1163)
+(define ALPHA 1000) ;; demerit for consecutive hyphenated lines (p1163)
+(define GAMMA 1000) ;; demerit for fitness-class differences (p1163)
 
-(define p-tolerance 100)
+(define P-TOLERANCE 1.26)
+(define LINE-PENALTY 1)
 
 (define para%
   (class object%
     (init-field items     ;; (Vectorof Item)
                 targetw   ;; PositiveReal
-                [linepenalty 1]) ;; NNReal
+                [p-tolerance P-TOLERANCE]
+                [linepenalty LINE-PENALTY]) ;; NNReal
     (super-new)
 
     ;; p1156: items must start with Box and end with (Penalty _ _ -inf.0)
@@ -147,7 +154,7 @@
              ;; Only forced breaks; adjratio = 1
              (for/fold ([a 0] [acc null] #:result (reverse acc))
                        ([b (in-range 1 len)] #:when (forced-break? b))
-               (values (after b) (cons (line a b 1) acc)))]
+               (values (after b) (cons (line a b 0) acc)))]
             [else
              (define result (go*))
              (and result (node->lines result))]))
@@ -157,7 +164,7 @@
       (define final-active
         (for/fold ([active (list anode0)])
                   ([b (in-range len)] #:when (legal-break? b))
-          (eprintf "b = ~s, ~e, active(~s)\n" b (get b) (length active))
+          ;; (eprintf "b = ~s, ~e, active(~s)\n" b (get b) (length active))
           (update-active-breakpoints active b)))
       (and (pair? final-active) (argmin node-totdemerits final-active)))
 
@@ -170,11 +177,21 @@
           (values (cond [(or (< r -1) (forced-break? b))
                          (cons anode passive)]
                         [else passive])
-                  (cond [(and (<= -1 r) (< r p-tolerance))
+                  (cond [(and (>= r -1) (< r p-tolerance))
                          (cons (make-break anode b r) feasible)]
                         [else feasible]))))
-      (let ([active (if (pair? passive) (remq* passive active) active)])
-        (append (best-feasible-breaks feasible) active)))
+      (let* ([active* (if (pair? passive) (remq* passive active) active)]
+             [active* (append (best-breaks feasible) active*)])
+        (cond [(pair? active*) active*]
+              [else (update-active/accept-overfull active b)])))
+
+    (define/private (update-active/accept-overfull active b)
+      (define breaks
+        (for/fold ([breaks null])
+                  ([anode (in-list active)])
+          (define r (line-adjustment-ratio (node-after anode) b))
+          (cons (make-break anode b (max -1 r)) breaks)))
+      (best-breaks breaks))
 
     (define/private (make-break anode b r)
       (match-define (node a aafter aline ar afitness atotdemerits _) anode)
@@ -182,13 +199,13 @@
       (define bdemerits (line-demerits anode b r bfitness))
       (node b (after b) (add1 aline) r bfitness (+ atotdemerits bdemerits) anode))
 
-    (define (best-feasible-breaks feasible)
+    (define (best-breaks breaks)
       ;; (p1159) Select at most one break per fitness, since we fix q=0.
       (for/fold ([keep null])
                 ([fitness (in-range 0 4)])
         (for/fold ([best #f]
                    #:result (if best (cons best keep) keep))
-                  ([bnode (in-list feasible)]
+                  ([bnode (in-list breaks)]
                    #:when (= fitness (node-fitness bnode)))
           (if (or (not best) (< (node-totdemerits bnode) (node-totdemerits best))) bnode best))))
 
@@ -203,12 +220,10 @@
    fitness      ;; {0,1,2,3} -- fitness class of line ending here
    totdemerits  ;; Real -- total demerits up to this breakpoint
    previous     ;; Node/#f -- link to previous breakpoint
-   ) #:transparent)
+   ) #:prefab)
 
 (define (initial-node)
   (node -1 0 0 1 1 0 #f))
-
-;; FIXME: store adjustment-ratio in node!
 
 (define (node<? x y)
   (let ([xline (node-line x)] [yline (node-line y)])
@@ -233,25 +248,3 @@
     (cond [an (let ([ln (line (node-after an) (node-position bn) (node-adjratio bn))])
                 (loop an (cons ln acc)))]
           [else acc])))
-
-;; ------------------------------------------------------------
-
-(define (get-line-breaks items targetw)
-  (define para (new para% (items items) (targetw targetw)))
-  (send para go))
-
-;; ------------------------------------------------------------
-
-(module+ main
-  (define sp (Glue " " 6 3 2))
-  (define words (for/list ([i (in-range 50)])
-                  (define len (modulo (sqr i) 6))
-                  (Box (make-string len #\x) (* len 6))))
-  (define items (append (add-between words sp)
-                        (list (Glue "\n" 0 10000 0) (Penalty "!" 0 -inf.0 #f))))
-  (define itemv (list->vector items))
-  ;;itemv
-  
-  (define para (new para% (items itemv) (targetw 200)))
-  
-  (send para go))
