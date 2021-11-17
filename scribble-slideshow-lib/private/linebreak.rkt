@@ -1,3 +1,6 @@
+;; Copyright 2021 Ryan Culpepper.
+;; Licensed under the Apache 2.0 license. See LICENSE.
+
 #lang racket/base
 (require racket/match
          (only-in racket/math sqr)
