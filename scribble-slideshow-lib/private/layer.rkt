@@ -101,6 +101,9 @@
 
 (define slide-zone-table (make-hash))
 
+;; ============================================================
+;; Default placer for 'auto
+
 #|
 ;; For default layer:
 
@@ -151,6 +154,11 @@
 
 (define (layer? v) (is-a? v layer<%>))
 
+(define (layer<? a b)
+  (< (send a get-z) (send b get-z)))
+
+;; ----------------------------------------
+
 (define layer-base%
   (class* object% (layer<%>)
     (init-field [style (hasheq)]    ;; StyleHash, should set 'block-width
@@ -175,7 +183,7 @@
 
 (define h-layer-base%
   (class layer-base%
-    (init-field [gap (current-gap-size)])
+    (init-field gap)
     (super-new)
 
     ;; type LayerPre = Real  -- height of all picts so far
@@ -238,6 +246,34 @@
       (inset-to/align p #f lpre (make-align halign 'c)))
     ))
 
+;; ----------------------------------------
+
+(define (layer placer zone
+               #:gap [gap 24]
+               #:style [style (hasheq)])
+  (new layer% (placer placer) (zone zone) (gap gap) (style style)))
+
+#;
+;;FIXME: rx ry align #:width ...
+(define (make-layer rx1 rx2 ry align
+                    #:aspect [aspect 'fullscreen]
+                    #:layout [layout 'top]
+                    #:gap [gap (current-gap-size)]
+                    #:style [style (hasheq)]
+                    #:z [z (next-auto-z)])
+  (define w (* (get-client-w #:aspect 'fullscreen) (- rx2 rx1)))
+  (new layer%
+       (placer (coord rx1 ry align #:sep gap))
+       (style (hash-set style 'block-width w))
+       (gap gap) (aspect aspect) (layout layout) (z z)))
+
+(define (next-auto-z)
+  (set! auto-z (+ auto-z auto-dz))
+  auto-z)
+
+(define auto-z 1.0)
+(define auto-dz 0.000001)
+
 ;; FIXME! To avoid a dependency from layer.rkt to slideshow/base, the layer
 ;; place method should take a slide-config argument and use that to get
 ;; client/screen dimensions.
@@ -252,6 +288,7 @@
 
 ;; XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
+#|
 (define default-layer%
   (class h-layer-base%
     (inherit get-gap)
@@ -343,29 +380,7 @@
     [else (error 'get-client-y "bad effective layout: ~e" elayout)]))
 
 (define default-layer (new default-layer%))
-
-(define (layer<? a b)
-  (< (send a get-z) (send b get-z)))
-
-(define auto-z 1.0)
-(define auto-dz 0.000001)
-(define (next-auto-z)
-  (set! auto-z (+ auto-z auto-dz))
-  auto-z)
-
-;;FIXME: rx ry align #:width ...
-(define (make-layer rx1 rx2 ry align
-                    #:aspect [aspect 'fullscreen]
-                    #:layout [layout 'top]
-                    #:gap [gap (current-gap-size)]
-                    #:style [style (hasheq)]
-                    #:z [z (next-auto-z)])
-  (define w (* (get-client-w #:aspect 'fullscreen) (- rx2 rx1)))
-  (new layer%
-       (placer (coord rx1 ry align #:sep gap))
-       (style (hash-set style 'block-width w))
-       (gap gap) (aspect aspect) (layout layout) (z z)))
-
+|#
 
 ;; ============================================================
 
