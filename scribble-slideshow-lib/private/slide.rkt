@@ -10,9 +10,13 @@
          (prefix-in s: scribble/html-properties)
          (prefix-in s: scribble/latex-properties)
          (prefix-in s: scribble/decode)
-         (only-in slideshow/base slide title-h get-full-page)
+         (only-in slideshow/base
+                  slide get-full-page
+                  title-h margin current-gap-size get-client-w get-client-h)
          pict
          ppict/pict
+         ppict/zone
+         ppict/align
          "style.rkt"
          "content.rkt"
          "block.rkt"
@@ -40,6 +44,59 @@
   (parameterize ((current-resolve-info (get-resolve-info (list p))))
     (define-values (h mk) (slides-from-part p #f))
     (void (mk h no-ctx))))
+
+;; ------------------------------------------------------------
+
+(struct make-slides-prop (mk))
+
+(define (add-slide-style s istyle)
+  (match s
+    [(s:style name props)
+     (foldl add-slide-style-prop (add-slide-style name istyle) props)]
+    ;; ----
+    ;; standard scribble part styles seem irrelevant, ignore
+    [_ istyle]))
+
+(define (add-slide-style-prop prop istyle)
+  (match prop
+    [(or 'auto 'center 'top 'tall) (hash-set istyle 'slide-layout prop)]
+    [(or 'widescreen 'fullscreen) (hash-set istyle 'slide-aspect prop)]
+    ['next (hash-set istyle 'slide-mode 'next)]
+    ['alts (hash-set istyle 'slide-mode 'alts)]
+    ['ignore (hash-set istyle 'slide-mode 'ignore)]
+    ['ignore* (hash-set istyle 'slide-mode 'ignore*)]
+    [(make-slides-prop mk) (hash-set istyle 'slide-maker mk)]
+    ;; ----
+    ;; standard scribble part styles seem irrelevant, ignore
+    [_ istyle]))
+
+(define (remove-slide-styles istyle)
+  (define keys '(slide-layout slide-mode
+                 slide-title-color slide-title-size slide-title-base))
+  (hash-remove* istyle keys))
+
+(define (get-title-istyle istyle)
+  (remove-slide-styles
+   (remove-block-styles
+    (hash-update* istyle
+                  'color (lambda (v) (hash-ref istyle 'slide-title-color v))
+                  'text-size (lambda (v) (hash-ref istyle 'slide-title-size v))
+                  'text-base (lambda (v) (hash-ref istyle 'slide-title-base v))))))
+
+(define (part/make-slides mk)
+  (define s (s:style #f (list 'ignore (make-slides-prop mk))))
+  (s:part #f null #f s null null null))
+
+(define (in-layer #:layer lay . flow)
+  (s:compound-paragraph (s:style #f (list lay)) (s:decode-flow flow)))
+
+(define (in-style #:style style . flow)
+  (define (add-styles istyle)
+    (for/fold ([istyle istyle]) ([(k v) (in-hash style)]) (hash-set istyle k v)))
+  (s:compound-paragraph (s:style #f (list (style-transformer add-styles))) (s:decode-flow flow)))
+
+;; ============================================================
+;; Slide making
 
 ;; ------------------------------------------------------------
 ;; Preinfo (slide rendering pass 1)
@@ -209,51 +266,170 @@
   (pin-over base x y body))
 
 ;; ============================================================
+;; Slide configs and zones
 
-(struct make-slides-prop (mk))
+(define slide-config<%>
+  (interface ()
+    ;; Slide-specific
+    slide-title? ;; -> Boolean
+    slide-layout ;; -> Layout
+    slide-aspect ;; -> Aspect
+    ;; Settings
+    clientw ;; Aspect -> Real
+    clienth ;; Aspect -> Real
+    titleh  ;; -> Real
+    margin  ;; -> Real
+    gap     ;; -> Real
+    ))
 
-(define (add-slide-style s istyle)
-  (match s
-    [(s:style name props)
-     (foldl add-slide-style-prop (add-slide-style name istyle) props)]
-    ;; ----
-    ;; standard scribble part styles seem irrelevant, ignore
-    [_ istyle]))
+;; FIXME: Move to slide.rkt
+(define slide-config%
+  (class object%
+    (init-field title? layout aspect)
+    (super-new)
+    ;; Slide-specific
+    (define/public (slide-title?) title?)
+    (define/public (slide-layout) layout)
+    (define/public (slide-aspect) aspect)
+    ;; Global settings
+    (define/public (clientw aspect) (get-client-w #:aspect aspect))
+    (define/public (clienth aspect) (get-client-h #:aspect aspect))
+    (define/public (titleh) title-h)
+    (define/public (get-margin) margin)
+    (define/public (gap [n 1]) (* n (current-gap-size)))
 
-(define (add-slide-style-prop prop istyle)
-  (match prop
-    [(or 'auto 'center 'top 'tall) (hash-set istyle 'slide-layout prop)]
-    [(or 'widescreen 'fullscreen) (hash-set istyle 'slide-aspect prop)]
-    ['next (hash-set istyle 'slide-mode 'next)]
-    ['alts (hash-set istyle 'slide-mode 'alts)]
-    ['ignore (hash-set istyle 'slide-mode 'ignore)]
-    ['ignore* (hash-set istyle 'slide-mode 'ignore*)]
-    [(make-slides-prop mk) (hash-set istyle 'slide-maker mk)]
-    ;; ----
-    ;; standard scribble part styles seem irrelevant, ignore
-    [_ istyle]))
+    (define/public (screenw aspect)
+      (+ (clientw aspect) margin margin))
+    (define/public (screenh aspect)
+      (+ (clienth aspect) margin margin))
+    (define/public (get-screen-dx aspect)
+      (if aspect (/ (- (clientw #f) (clientw aspect)) 2) 0))
 
-(define (remove-slide-styles istyle)
-  (define keys '(slide-layout slide-mode
-                 slide-title-color slide-title-size slide-title-base))
-  (hash-remove* istyle keys))
+    (define/public (slide-zone-f name aspect)
+      (case name
+        ;; Vertically centered, title?-independent
+        [(main)
+         (define dh (+ title-h (gap 2)))
+         (values (clientw aspect) (- (clienth aspect) dh dh) (get-screen-dx aspect) dh)]
+        [(tall-main)
+         (define dh (+ title-h (gap 1)))
+         (values (clientw aspect) (- (clienth aspect) dh dh) (get-screen-dx aspect) dh)]
+        [(full)
+         (values (clientw aspect) (clienth aspect) (get-screen-dx aspect) 0)]
+        [(screen)
+         (values (screenw aspect) (screenh aspect) (- (get-screen-dx aspect) margin) (- margin))]
+        ;; Vertically centered, title?-dependent
+        [(main/full)
+         (if (slide-title?)
+             (slide-zone-f 'main aspect)
+             (slide-zone-f 'full aspect))]
+        ;; Non-centered, title?-independent
+        [(body)
+         (define dh (+ title-h (* 2 (current-gap-size))))
+         (values (clientw aspect) (- (clienth aspect) dh) (get-screen-dx aspect) dh)]
+        [(tall-body)
+         (define dh (+ title-h (* 1 (current-gap-size))))
+         (values (clientw aspect) (- (clienth aspect) dh) (get-screen-dx aspect) dh)]
+        ;; [(body/client) _]
+        ;; [(tall-body/client) _]
+        [else (error 'slide-zone "unknown slide-zone name: ~e" name)]))
+    ))
 
-(define (get-title-istyle istyle)
-  (remove-slide-styles
-   (remove-block-styles
-    (hash-update* istyle
-                  'color (lambda (v) (hash-ref istyle 'slide-title-color v))
-                  'text-size (lambda (v) (hash-ref istyle 'slide-title-size v))
-                  'text-base (lambda (v) (hash-ref istyle 'slide-title-base v))))))
+(define current-slide-config (make-parameter #f))
+(define (get-slide-config who)
+  (or (current-slide-config)
+      (error who "no slide configuration available")))
 
-(define (part/make-slides mk)
-  (define s (s:style #f (list 'ignore (make-slides-prop mk))))
-  (s:part #f null #f s null null null))
+;; slide-zone : Symbol #:aspect Aspect -> Zone
+;; The result assumes that the initial scene is (get-full-page #:aspect #f)
+;; --- that is, with dimensions (get-client-{w,h} #:aspect #f) --- and will
+;; be displayed centered on the screen.
+(define (slide-zone name #:aspect [aspect #f])
+  (define (zone-f . args)
+    (send (get-slide-config 'slide-zone) slide-zone-f name aspect))
+  (hash-ref! slide-zone-table (cons name aspect)
+             (lambda () (make-zone zone-f))))
 
-(define (in-layer #:layer lay . flow)
-  (s:compound-paragraph (s:style #f (list lay)) (s:decode-flow flow)))
+(define slide-zone-table (make-hash))
 
-(define (in-style #:style style . flow)
-  (define (add-styles istyle)
-    (for/fold ([istyle istyle]) ([(k v) (in-hash style)]) (hash-set istyle k v)))
-  (s:compound-paragraph (s:style #f (list (style-transformer add-styles))) (s:decode-flow flow)))
+;; ============================================================
+;; Default placer for 'auto
+
+(require (only-in ppict/private/ppict placer-base% apply-compose)) ;; FIXME!
+
+(define overflow-placer%
+  (class placer-base%
+    (init-field halign valign overflow-valign sep)
+    (super-new)
+
+    (define compose (halign->vcompose halign))
+    (define/public (check-associative-vcompose) halign)
+
+    (define/public (compose-elements elems)
+      (apply-compose compose sep elems))
+
+    (define/override (place* scene iw ih ix iy elems)
+      (define x (+ ix (* iw (align->frac halign))))
+      (define-values (newpict newsep) (compose-elements elems))
+      (cond [(<= (pict-height newpict) ih)
+             (define y (+ iy (* ih (align->frac valign))))
+             (pin-over/align scene x y halign valign newpict)]
+            [else
+             (define y (+ iy (* ih (align->frac valign))))
+             (pin-over/align scene x y halign overflow-valign newpict)]))
+    ))
+
+(define (overflow-placer #:halign [halign 'c]
+                         #:valign [valign 'c]
+                         #:overflow-valign [overflow-valign 't]
+                         #:sep [sep 0])
+  (new overflow-placer% (halign halign) (valign valign)
+       (overflow-valign overflow-valign) (sep sep)))
+
+(define default-layer
+  (layer (overflow-placer)
+         (slide-zone 'body)))
+
+;; ============================================================
+
+(module+ main
+  (require ppict/slideshow2
+           (only-in slideshow/base slide get-full-page t))
+
+  (define (test-slide zname title)
+    (parameterize ((current-slide-config
+                    (new slide-config% (title? (and title #t)) (layout #f) (aspect #f))))
+      (slide #:title title #:layout 'tall
+             (inset
+              (ppict-do (frame (get-full-page #:aspect #f))
+                        #:go (subplacer (coord 0 0 'cc) (slide-zone zname))
+                        (colorize (disk 20) "red")
+                        #:go (subplacer (coord 1 1 'cc) (slide-zone zname))
+                        (colorize (disk 20) "blue")
+                        #:go (subplacer (coord 1/2 1/2 'cc) (slide-zone zname))
+                        (t (format "zone: ~e" zname)))
+              0
+              (if title (- (+ title-h (* 1 (current-gap-size)))) 0)))))
+
+  (test-slide 'main "main")
+  (test-slide 'main #f)
+
+  (test-slide 'tall-main "tall-main")
+  (test-slide 'tall-main #f)
+
+  (test-slide 'full "full")
+  (test-slide 'full #f)
+
+  (test-slide 'screen "screen")
+  (test-slide 'screen #f)
+
+  (test-slide 'main/full "main/full")
+  (test-slide 'main/full #f)
+
+  (test-slide 'body "body")
+  (test-slide 'body #f)
+
+  (test-slide 'tall-body "tall-body")
+  (test-slide 'tall-body #f)
+
+  (void))

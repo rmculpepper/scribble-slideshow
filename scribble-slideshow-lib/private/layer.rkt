@@ -15,124 +15,6 @@
 (provide (all-defined-out))
 
 ;; ============================================================
-;; Slide configs and zones
-
-(define slide-config<%>
-  (interface ()
-    ;; Slide-specific
-    slide-title? ;; -> Boolean
-    slide-layout ;; -> Layout
-    slide-aspect ;; -> Aspect
-    ;; Settings
-    clientw ;; Aspect -> Real
-    clienth ;; Aspect -> Real
-    titleh  ;; -> Real
-    margin  ;; -> Real
-    gap     ;; -> Real
-    ))
-
-;; FIXME: Move to slide.rkt
-(define slide-config%
-  (class object%
-    (init-field title? layout aspect)
-    (super-new)
-    ;; Slide-specific
-    (define/public (slide-title?) title?)
-    (define/public (slide-layout) layout)
-    (define/public (slide-aspect) aspect)
-    ;; Global settings
-    (define/public (clientw aspect) (get-client-w #:aspect aspect))
-    (define/public (clienth aspect) (get-client-h #:aspect aspect))
-    (define/public (titleh) title-h)
-    (define/public (get-margin) margin)
-    (define/public (gap [n 1]) (* n (current-gap-size)))
-
-    (define/public (screenw aspect)
-      (+ (clientw aspect) margin margin))
-    (define/public (screenh aspect)
-      (+ (clienth aspect) margin margin))
-    (define/public (get-screen-dx aspect)
-      (if aspect (/ (- (clientw #f) (clientw aspect)) 2) 0))
-
-    (define/public (slide-zone-f name aspect)
-      (case name
-        ;; Vertically centered, title?-independent
-        [(main)
-         (define dh (+ title-h (gap 2)))
-         (values (clientw aspect) (- (clienth aspect) dh dh) (get-screen-dx aspect) dh)]
-        [(tall-main)
-         (define dh (+ title-h (gap 1)))
-         (values (clientw aspect) (- (clienth aspect) dh dh) (get-screen-dx aspect) dh)]
-        [(full)
-         (values (clientw aspect) (clienth aspect) (get-screen-dx aspect) 0)]
-        [(screen)
-         (values (screenw aspect) (screenh aspect) (- (get-screen-dx aspect) margin) (- margin))]
-        ;; Vertically centered, title?-dependent
-        [(main/full)
-         (if (slide-title?)
-             (slide-zone-f 'main aspect)
-             (slide-zone-f 'full aspect))]
-        ;; Non-centered, title?-independent
-        [(body)
-         (define dh (+ title-h (* 2 (current-gap-size))))
-         (values (clientw aspect) (- (clienth aspect) dh) (get-screen-dx aspect) dh)]
-        [(tall-body)
-         (define dh (+ title-h (* 1 (current-gap-size))))
-         (values (clientw aspect) (- (clienth aspect) dh) (get-screen-dx aspect) dh)]
-        ;; [(body/client) _]
-        ;; [(tall-body/client) _]
-        [else (error 'slide-zone "unknown slide-zone name: ~e" name)]))
-    ))
-
-(define current-slide-config (make-parameter #f))
-(define (get-slide-config who)
-  (or (current-slide-config)
-      (error who "no slide configuration available")))
-
-;; slide-zone : Symbol #:aspect Aspect -> Zone
-;; The result assumes that the initial scene is (get-full-page #:aspect #f)
-;; --- that is, with dimensions (get-client-{w,h} #:aspect #f) --- and will
-;; be displayed centered on the screen.
-(define (slide-zone name #:aspect [aspect #f])
-  (define (zone-f . args)
-    (send (get-slide-config 'slide-zone) slide-zone-f name aspect))
-  (hash-ref! slide-zone-table (cons name aspect)
-             (lambda () (make-zone zone-f))))
-
-(define slide-zone-table (make-hash))
-
-;; ============================================================
-;; Default placer for 'auto
-
-#|
-;; For default layer:
-
-(local-require (only-in ppict/private/ppict placer-base% apply-compose)) ;; FIXME!
-(define overflow-placer%
-  (class placer-base%
-    (init-field halign valign overflow-valign compose sep)
-    (super-new)
-    (define/override (place* scene iw ih ix iy elems)
-      (define x (+ ix (* iw (align->frac halign))))
-      (define-values (newpict newsep) (apply-compose compose sep elems))
-      (cond [(<= (pict-height newpict) ih)
-             (define y (+ iy (* ih (align->frac valign))))
-             (pin-over/align scene x y halign valign newpict)]
-            [else
-             (define y (+ iy (* ih (align->frac valign))))
-             (pin-over/align scene x y halign overflow-valign newpict)]))
-    ))
-
-(define (overflow-placer #:halign [halign 'center]
-                         #:valign [valign 'center]
-                         #:overflow-valign [overflow-valign 'top]
-                         #:compose [compose (halign->vcompose halign)]
-                         #:sep [sep 0])
-  (new overflow-placer% (halign halign) (valign valign) (overflow-valign overflow-valign)
-       (compose compose) (sep sep)))
-|#
-
-;; ============================================================
 ;; Layers
 
 (define layer<%>
@@ -232,7 +114,7 @@
 
     (define zplacer (subplacer placer zone))
     (define halign
-      (or (send zplacer check-associative-vcompose)
+      (or (send placer check-associative-vcompose)
           (error 'layer "placer has incompatible compose function: ~e" placer)))
 
     ;; place : (Listof Pict) LayerPre Pict -> Pict
@@ -320,29 +202,6 @@
                [else 'center])]
         [else layout]))
 
-;; A RefPage determines the height and y offset of the "reference page" to which
-;; the layer is relative. The y offset is relative to the top of full-page (that
-;; is, after the margin is already applied).
-
-;; A RefPage is one of
-;; - 'full      -- h = full, y = <center> = 0
-;; - 'partial   -- h = titleless, y = <center> = (titleh+2gap)/2
-;; - 't-top     -- h = titleless, y = titleh+2gap
-;; - 't-tall    -- h = titleless, y = titleh+1gap
-(define (refpage-h p)
-  (let ([gap (current-gap-size)])
-    (case p
-      [(full) (get-client-h)]
-      [else (- (get-client-h) title-h gap gap)])))
-(define (refpage-y p)
-  (let ([gap (current-gap-size)])
-    (case p
-      [(full) 0]
-      [(partial) (/ (+ title-h gap gap) 2)]
-      [(t-top) (+ title-h gap gap)]
-      [(t-tall) (+ title-h gap)]
-      [else (error 'refpage-y "bad refpage: ~e" p)])))
-
 ;; A LayerLayout is mapped to a RefPage based also on whether there is a title
 ;; and (possibly) the effective layout of the slide.
 
@@ -383,46 +242,25 @@
 (define default-layer (new default-layer%))
 |#
 
-;; ============================================================
+;; A RefPage determines the height and y offset of the "reference page" to which
+;; the layer is relative. The y offset is relative to the top of full-page (that
+;; is, after the margin is already applied).
 
-(module+ main
-  (require ppict/slideshow2
-           (only-in slideshow/base slide get-full-page t))
-
-  (define (test-slide zname title)
-    (parameterize ((current-slide-config
-                    (new slide-config% (title? (and title #t)) (layout #f) (aspect #f))))
-      (slide #:title title #:layout 'tall
-             (inset
-              (ppict-do (frame (get-full-page #:aspect #f))
-                        #:go (subplacer (coord 0 0 'cc) (slide-zone zname))
-                        (colorize (disk 20) "red")
-                        #:go (subplacer (coord 1 1 'cc) (slide-zone zname))
-                        (colorize (disk 20) "blue")
-                        #:go (subplacer (coord 1/2 1/2 'cc) (slide-zone zname))
-                        (t (format "zone: ~e" zname)))
-              0
-              (if title (- (+ title-h (* 1 (current-gap-size)))) 0)))))
-
-  (test-slide 'main "main")
-  (test-slide 'main #f)
-
-  (test-slide 'tall-main "tall-main")
-  (test-slide 'tall-main #f)
-
-  (test-slide 'full "full")
-  (test-slide 'full #f)
-
-  (test-slide 'screen "screen")
-  (test-slide 'screen #f)
-
-  (test-slide 'main/full "main/full")
-  (test-slide 'main/full #f)
-
-  (test-slide 'body "body")
-  (test-slide 'body #f)
-
-  (test-slide 'tall-body "tall-body")
-  (test-slide 'tall-body #f)
-
-  )
+;; A RefPage is one of
+;; - 'full      -- h = full, y = <center> = 0
+;; - 'partial   -- h = titleless, y = <center> = (titleh+2gap)/2
+;; - 't-top     -- h = titleless, y = titleh+2gap
+;; - 't-tall    -- h = titleless, y = titleh+1gap
+(define (refpage-h p)
+  (let ([gap (current-gap-size)])
+    (case p
+      [(full) (get-client-h)]
+      [else (- (get-client-h) title-h gap gap)])))
+(define (refpage-y p)
+  (let ([gap (current-gap-size)])
+    (case p
+      [(full) 0]
+      [(partial) (/ (+ title-h gap gap) 2)]
+      [(t-top) (+ title-h gap gap)]
+      [(t-tall) (+ title-h gap)]
+      [else (error 'refpage-y "bad refpage: ~e" p)])))
