@@ -227,9 +227,7 @@
           (define lpre (hash-ref layers lay))
           (let ([lay (if (eq? lay initial-default-layer) (make-default-layer title-p layout) lay)])
             (send lay place ps lpre base)))))
-    (slide #:title title-p #:layout 'tall #:aspect aspect
-           (let ([y (if title-p (- (refpage-y 't-tall)) 0)])
-             (inset page 0 y 0 0)))
+    (slide/full #:title title-p #:aspect aspect page)
     (slctx title-p layout layer=>picts))
   (values new-h mk))
 
@@ -247,26 +245,11 @@
                [else (hash-cons h layer b)])]
         [b (hash-cons h layer b)]))))
 
-#;
-(define (add-default-layer title? layout aspect ps base)
-  (define gap (current-gap-size))
-  (define body (apply vc-append gap ps))
-  (define body-w (pict-width body))
-  (define body-h (pict-height body))
-  (define base-w (pict-width base))
-  (define base-h (pict-height base))
-  (define title-h title-h)
-  (define x (/ (- base-w body-w) 2))
-  (define y
-    (let loop ([layout layout])
-      (cond [(eq? layout 'center) (/ (- base-h body-h) 2)]
-            [(eq? layout 'top) (if title? (+ title-h gap gap) 0)]
-            [(eq? layout 'tall) (if title? (+ title-h gap) 0)]
-            ;; 'auto cases:
-            [(and title? (> (+ (/ body-h 2) (+ title-h gap gap)) (/ base-h 2)))
-             (loop 'top)]
-            [else (loop 'center)])))
-  (pin-over base x y body))
+;; PRE: page has same dimensions as (get-full-page #:aspect #f).
+(define (slide/full #:title title-p #:aspect aspect page)
+  (slide #:title title-p #:layout 'tall #:aspect aspect
+         (let ([y (if title-p (- 0 title-h (current-gap-size)) 0)])
+           (inset page 0 y 0 0))))
 
 ;; ============================================================
 ;; Slide configs and zones
@@ -422,17 +405,14 @@
   (define (test-slide zname title)
     (parameterize ((current-slide-config
                     (new slide-config% (title? (and title #t)) (layout #f) (aspect #f))))
-      (slide #:title title #:layout 'tall
-             (inset
-              (ppict-do (frame (get-full-page #:aspect #f))
-                        #:go (subplacer (coord 0 0 'cc) (slide-zone zname))
-                        (colorize (disk 20) "red")
-                        #:go (subplacer (coord 1 1 'cc) (slide-zone zname))
-                        (colorize (disk 20) "blue")
-                        #:go (subplacer (coord 1/2 1/2 'cc) (slide-zone zname))
-                        (t (format "zone: ~e" zname)))
-              0
-              (if title (- (+ title-h (* 1 (current-gap-size)))) 0)))))
+      (slide/full #:title title #:aspect #f
+                  (ppict-do (frame (get-full-page #:aspect #f))
+                            #:go (subplacer (coord 0 0 'cc) (slide-zone zname))
+                            (colorize (disk 20) "red")
+                            #:go (subplacer (coord 1 1 'cc) (slide-zone zname))
+                            (colorize (disk 20) "blue")
+                            #:go (subplacer (coord 1/2 1/2 'cc) (slide-zone zname))
+                            (t (format "zone: ~e" zname))))))
 
   (test-slide 'main "main")
   (test-slide 'main #f)
