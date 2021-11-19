@@ -220,7 +220,7 @@
     (define page
       (parameterize ((current-slide-config
                       (new slide-config% (title? (and title-p #t)) (aspect aspect) (layout #f))))
-        (for/fold ([base (get-full-page #:aspect aspect)])
+        (for/fold ([base (get-full-page #:aspect #f)])
                   ([lay (in-list (sort (hash-keys layer=>picts) layer<?))])
           (match-define (preinfo title? layers) pre)
           (define ps (hash-ref layer=>picts lay))
@@ -377,11 +377,9 @@
       (define-values (newpict newsep) (compose-elements elems))
       (cond [(<= (pict-height newpict) ih)
              (define y (+ iy (* ih (align->frac valign))))
-             (eprintf "not over: ~s <= ~s, so y = ~s\n" (pict-height newpict) ih y)
              (pin-over/align scene x y halign valign newpict)]
             [else
              (define y (+ iy (* ih (align->frac overflow-valign))))
-             (eprintf "OVERFLOW: ~s > ~s, so y = ~s\n" (pict-height newpict) ih y)
              (pin-over/align scene x y halign overflow-valign newpict)]))
     ))
 
@@ -394,7 +392,7 @@
 
 (define default-layer
   (layer (overflow-placer)
-         (slide-zone 'body)))
+         (slide-zone 'main)))
 
 
 ;;FIXME: rx ry align #:width ...
@@ -407,7 +405,7 @@
                     #:z [z (next-auto-z)])
   (define w (* (get-client-w #:aspect 'fullscreen) (- rx2 rx1)))
   (layer (coord rx1 ry align #:sep gap)
-         (slide-zone 'screen #:aspect 'fullscreen)
+         (slide-zone 'body #:aspect 'fullscreen)
          #:style (hash-set style 'block-width w)))
 
 ;; ============================================================
