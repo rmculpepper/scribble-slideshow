@@ -253,6 +253,16 @@
                #:style [style (hasheq)])
   (new layer% (placer placer) (zone zone) (gap gap) (style style)))
 
+(define (next-auto-z)
+  (set! auto-z (+ auto-z auto-dz))
+  auto-z)
+
+(define auto-z 1.0)
+(define auto-dz 0.000001)
+
+
+;; XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
 #;
 ;;FIXME: rx ry align #:width ...
 (define (make-layer rx1 rx2 ry align
@@ -267,13 +277,6 @@
        (style (hash-set style 'block-width w))
        (gap gap) (aspect aspect) (layout layout) (z z)))
 
-(define (next-auto-z)
-  (set! auto-z (+ auto-z auto-dz))
-  auto-z)
-
-(define auto-z 1.0)
-(define auto-dz 0.000001)
-
 ;; FIXME! To avoid a dependency from layer.rkt to slideshow/base, the layer
 ;; place method should take a slide-config argument and use that to get
 ;; client/screen dimensions.
@@ -285,8 +288,6 @@
 
 ;; Maybe add an indirection so that named layers (& zones & placers ?) can be
 ;; registered entirely separately from the document?
-
-;; XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 #|
 (define default-layer%
