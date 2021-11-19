@@ -124,7 +124,7 @@
 
     ;; combine-picts : (Listof Pict) LayerPre -> Pict
     (define/public (combine-picts ps lpre)
-      (define p (send zplacer compose-elements ps))
+      (define-values (p _newsep) (send placer compose-elements ps))
       (inset-to/align p #f lpre (make-align halign 'c)))
     ))
 
@@ -144,20 +144,6 @@
 
 
 ;; XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-
-#;
-;;FIXME: rx ry align #:width ...
-(define (make-layer rx1 rx2 ry align
-                    #:aspect [aspect 'fullscreen]
-                    #:layout [layout 'top]
-                    #:gap [gap (current-gap-size)]
-                    #:style [style (hasheq)]
-                    #:z [z (next-auto-z)])
-  (define w (* (get-client-w #:aspect 'fullscreen) (- rx2 rx1)))
-  (new layer%
-       (placer (coord rx1 ry align #:sep gap))
-       (style (hash-set style 'block-width w))
-       (gap gap) (aspect aspect) (layout layout) (z z)))
 
 ;; FIXME! To avoid a dependency from layer.rkt to slideshow/base, the layer
 ;; place method should take a slide-config argument and use that to get

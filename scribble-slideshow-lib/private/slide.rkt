@@ -218,12 +218,14 @@
                 ([(lay body-p) (in-hash layer=>pict)])
         (hash-append layer=>picts lay (list body-p))))
     (define page
-      (for/fold ([base (get-full-page #:aspect aspect)])
-                ([lay (in-list (sort (hash-keys layer=>picts) layer<?))])
-        (match-define (preinfo title? layers) pre)
-        (define ps (hash-ref layer=>picts lay))
-        (define lpre (hash-ref layers lay))
-        (send lay place (or title-p title?) layout ps lpre base)))
+      (parameterize ((current-slide-config
+                      (new slide-config% (title? (and title-p #t)) (aspect aspect) (layout #f))))
+        (for/fold ([base (get-full-page #:aspect aspect)])
+                  ([lay (in-list (sort (hash-keys layer=>picts) layer<?))])
+          (match-define (preinfo title? layers) pre)
+          (define ps (hash-ref layer=>picts lay))
+          (define lpre (hash-ref layers lay))
+          (send lay place ps lpre base))))
     (slide #:title title-p #:layout 'tall #:aspect aspect
            (let ([y (if title-p (- (refpage-y 't-tall)) 0)])
              (inset page 0 y 0 0)))
@@ -330,6 +332,8 @@
         [(tall-body)
          (define dh (+ title-h (* 1 (current-gap-size))))
          (values (clientw aspect) (- (clienth aspect) dh) (get-screen-dx aspect) dh)]
+        [(title)
+         (values (clientw aspect) title-h 0 0)]
         ;; [(body/client) _]
         ;; [(tall-body/client) _]
         [else (error 'slide-zone "unknown slide-zone name: ~e" name)]))
@@ -373,9 +377,11 @@
       (define-values (newpict newsep) (compose-elements elems))
       (cond [(<= (pict-height newpict) ih)
              (define y (+ iy (* ih (align->frac valign))))
+             (eprintf "not over: ~s <= ~s, so y = ~s\n" (pict-height newpict) ih y)
              (pin-over/align scene x y halign valign newpict)]
             [else
-             (define y (+ iy (* ih (align->frac valign))))
+             (define y (+ iy (* ih (align->frac overflow-valign))))
+             (eprintf "OVERFLOW: ~s > ~s, so y = ~s\n" (pict-height newpict) ih y)
              (pin-over/align scene x y halign overflow-valign newpict)]))
     ))
 
@@ -389,6 +395,20 @@
 (define default-layer
   (layer (overflow-placer)
          (slide-zone 'body)))
+
+
+;;FIXME: rx ry align #:width ...
+
+(define (make-layer rx1 rx2 ry align
+                    #:aspect [aspect 'fullscreen]
+                    #:layout [layout 'top]
+                    #:gap [gap (current-gap-size)]
+                    #:style [style (hasheq)]
+                    #:z [z (next-auto-z)])
+  (define w (* (get-client-w #:aspect 'fullscreen) (- rx2 rx1)))
+  (layer (coord rx1 ry align #:sep gap)
+         (slide-zone 'screen #:aspect 'fullscreen)
+         #:style (hash-set style 'block-width w)))
 
 ;; ============================================================
 
@@ -431,5 +451,7 @@
 
   (test-slide 'tall-body "tall-body")
   (test-slide 'tall-body #f)
+
+  (test-slide 'title #f)
 
   (void))
