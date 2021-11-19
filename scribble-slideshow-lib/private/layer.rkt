@@ -131,9 +131,12 @@
 ;; ----------------------------------------
 
 (define (layer placer zone
+               #:z [z (next-auto-z)]
                #:gap [gap 24]
                #:style [style (hasheq)])
-  (new layer% (placer placer) (zone zone) (gap gap) (style style)))
+  (new layer% (z z) (gap gap) (style style) (placer placer) (zone zone)))
+
+;; FIXME: add [#:block-width rel/abs], set in update-style?
 
 (define (next-auto-z)
   (set! auto-z (+ auto-z auto-dz))

@@ -225,7 +225,8 @@
           (match-define (preinfo title? layers) pre)
           (define ps (hash-ref layer=>picts lay))
           (define lpre (hash-ref layers lay))
-          (send lay place ps lpre base))))
+          (let ([lay (if (eq? lay initial-default-layer) (make-default-layer title-p layout) lay)])
+            (send lay place ps lpre base)))))
     (slide #:title title-p #:layout 'tall #:aspect aspect
            (let ([y (if title-p (- (refpage-y 't-tall)) 0)])
              (inset page 0 y 0 0)))
@@ -237,7 +238,7 @@
   (define (hash-cons h k v) (hash-set h k (cons v (hash-ref h k null))))
   (define (get-layer style)
     (for/or ([p (in-list (s:style-properties style))] #:when (layer? p)) p))
-  (let loop ([h (hasheq)] [blocks blocks] [layer default-layer])
+  (let loop ([h (hasheq)] [blocks blocks] [layer initial-default-layer])
     (for/fold ([h h]) ([b (in-list blocks)])
       (match b
         [(s:compound-paragraph style blocks)
@@ -390,10 +391,14 @@
   (new overflow-placer% (halign halign) (valign valign)
        (overflow-valign overflow-valign) (sep sep)))
 
-(define default-layer
-  (layer (overflow-placer)
-         (slide-zone 'main)))
+(define (make-default-layer title? layout)
+  (case layout
+    [(center) (layer #:z 0 (coord 1/2 1/2 'cc) (slide-zone 'main/full))]
+    [(top) (layer #:z 0 (coord 1/2 0 'ct) (slide-zone (if title? 'body 'full)))]
+    [(tall) (layer #:z 0 (coord 1/2 0 'ct) (slide-zone (if title? 'tall-body 'full)))]
+    [(auto #f) (layer #:z 0 (overflow-placer) (slide-zone 'main/full))]))
 
+(define initial-default-layer (make-default-layer #f 'center))
 
 ;;FIXME: rx ry align #:width ...
 
