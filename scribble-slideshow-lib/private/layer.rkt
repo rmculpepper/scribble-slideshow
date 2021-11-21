@@ -4,15 +4,20 @@
 #lang racket/base
 (require racket/match
          racket/class
-         (only-in slideshow/base
-                  current-gap-size margin title-h
-                  get-client-h get-client-w)
          pict
          ppict/pict
          ppict/align
          ppict/zone
          "style.rkt")
 (provide (all-defined-out))
+
+;; Note: this module does not depend on slide.rkt or slideshow. See slide.rkt
+;; for zones and layers that depend on slideshow config and slide properties.
+
+;; Downside: we can't ask a layer for its width (or height) without a
+;; slide-config. This is okay (maybe?), because we don't *need* the width to
+;; update the width until we do the scribble->picts conversion, but it means
+;; that all width-dependent things must be delayed!
 
 ;; ============================================================
 ;; Layers
@@ -144,15 +149,3 @@
 
 (define auto-z 1.0)
 (define auto-dz 0.000001)
-
-;; FIXME! To avoid a dependency from layer.rkt to slideshow/base, the layer
-;; place method should take a slide-config argument and use that to get
-;; client/screen dimensions.
-
-;; Downside: we can't ask a layer for its width (or height) without a
-;; slide-config. (Only if using aspect = #f...) This is okay (maybe?), because
-;; we don't *need* the width to update the width until we do the scribble->picts
-;; conversion, but it means that all width-dependent things must be delayed!
-
-;; Maybe add an indirection so that named layers (& zones & placers ?) can be
-;; registered entirely separately from the document?
