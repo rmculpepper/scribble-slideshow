@@ -176,7 +176,7 @@ in something approximating their normal appearance.
 
 @defproc[(foo [bar baz?]) quux/c]{
 
-Returns the least @italic{quux} that is strictly more cromulent than
+Returns the least @italic{quux} that is strictly more crom@|?-|ulent than
 @racket[bar]. If none exists (for example, if @racket[bar] is @italic{perfectly}
 cromulent), an exception is raised.}
 
