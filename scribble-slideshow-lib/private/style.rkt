@@ -85,6 +85,14 @@
 (define (get-vertical-inset istyle) (get-line-sep istyle))
 
 ;; ------------------------------------------------------------
+
+;; FIXME: allow styleh to also extend/update existing keys
+(define (merge-styles base-istyle styleh)
+  (for/fold ([base-istyle base-istyle])
+            ([(k v) (in-hash styleh)])
+    (hash-set base-istyle k v)))
+
+;; ------------------------------------------------------------
 ;; Basic Styles
 
 ;; Elem styles:

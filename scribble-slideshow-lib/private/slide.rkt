@@ -21,19 +21,11 @@
          "content.rkt"
          "block.rkt"
          "scribble.rkt"
-         "layer.rkt")
+         "layer.rkt"
+         "part.rkt")
 (provide (all-defined-out)
-         (all-from-out "layer.rkt"))
-
-(define (hash-update* h . kfs)
-  (let loop ([h h] [kfs kfs])
-    (match kfs
-      [(list* k f kfs)
-       (loop (hash-update h k f #f) kfs)]
-      ['() h])))
-
-(define (hash-append h k vs)
-  (hash-set h k (append (hash-ref h k null) vs)))
+         (all-from-out "layer.rkt")
+         (all-from-out "part.rkt"))
 
 ;; ============================================================
 
@@ -42,46 +34,10 @@
 
 (define (scribble-slides* p)
   (parameterize ((current-resolve-info (get-resolve-info (list p))))
-    (define-values (h mk) (slides-from-part p #f))
-    (void (mk h no-ctx))))
+    (define renderer (new slide-parts-renderer% (istyle (current-sp-style))))
+    (send renderer render-part p)))
 
 ;; ------------------------------------------------------------
-
-(struct make-slides-prop (mk))
-
-(define (add-slide-style s istyle)
-  (match s
-    [(s:style name props)
-     (foldl add-slide-style-prop (add-slide-style name istyle) props)]
-    ;; ----
-    ;; standard scribble part styles seem irrelevant, ignore
-    [_ istyle]))
-
-(define (add-slide-style-prop prop istyle)
-  (match prop
-    [(or 'auto 'center 'top 'tall) (hash-set istyle 'slide-layout prop)]
-    [(or 'widescreen 'fullscreen) (hash-set istyle 'slide-aspect prop)]
-    ['next (hash-set istyle 'slide-mode 'next)]
-    ['alts (hash-set istyle 'slide-mode 'alts)]
-    ['ignore (hash-set istyle 'slide-mode 'ignore)]
-    ['ignore* (hash-set istyle 'slide-mode 'ignore*)]
-    [(make-slides-prop mk) (hash-set istyle 'slide-maker mk)]
-    ;; ----
-    ;; standard scribble part styles seem irrelevant, ignore
-    [_ istyle]))
-
-(define (remove-slide-styles istyle)
-  (define keys '(slide-layout slide-mode
-                 slide-title-color slide-title-size slide-title-base))
-  (hash-remove* istyle keys))
-
-(define (get-title-istyle istyle)
-  (remove-slide-styles
-   (remove-block-styles
-    (hash-update* istyle
-                  'color (lambda (v) (hash-ref istyle 'slide-title-color v))
-                  'text-size (lambda (v) (hash-ref istyle 'slide-title-size v))
-                  'text-base (lambda (v) (hash-ref istyle 'slide-title-base v))))))
 
 (define (part/make-slides mk)
   (define s (s:style #f (list 'ignore (make-slides-prop mk))))
@@ -90,160 +46,28 @@
 (define (in-layer #:layer lay . flow)
   (s:compound-paragraph (s:style #f (list lay)) (s:decode-flow flow)))
 
-(define (in-style #:style style . flow)
-  (define (add-styles istyle)
-    (for/fold ([istyle istyle]) ([(k v) (in-hash style)]) (hash-set istyle k v)))
+(define (in-style #:style mstyles . flow)
+  (define (add-styles istyle) (merge-styles istyle mstyles))
   (s:compound-paragraph (s:style #f (list (style-transformer add-styles))) (s:decode-flow flow)))
 
 ;; ============================================================
 ;; Slide making
 
-;; ------------------------------------------------------------
-;; Preinfo (slide rendering pass 1)
+(define slide-parts-renderer%
+  (class parts-renderer%
+    (inherit compose-page)
+    (super-new (initial-default-layer initial-default-layer))
 
-(struct preinfo
-  (title? ;; Boolean   -- was there ever a title?  -- BROKEN for alts-like !!!
-   layers ;; Hasheq[Layer => LayerPre]
-   ) #:prefab)
-
-(define (empty-pre) (preinfo #f (hasheq)))
-
-(define (pre-has-title pre has?)
-  (match pre [(preinfo title? layers) (preinfo (or title? has?) layers)]))
-
-(define (pre-update-layer pre lay p)
-  (match-define (preinfo title? layers) pre)
-  (preinfo title? (hash-update layers lay (lambda (lpre) (send lay update-pre lpre p)) #f)))
-
-(define (pre-max pre1 pre2)
-  (match-define (preinfo title1? layers1) (or pre1 (empty-pre)))
-  (match-define (preinfo title2? layers2) (or pre2 (empty-pre)))
-  (preinfo (or title1? title2?)
-           (hash-union layers1 layers2
-                       #:combine/key (lambda (lay lpre1 lpre2)
-                                       (send lay max-pre lpre1 lpre2)))))
-
-;; ------------------------------------------------------------
-;; Slide context (slide rendering pass 2)
-
-(struct slctx
-  (title   ;;
-   layout  ;; Layout
-   layers  ;; Hasheq[Layer => (Listof Pict)]
-   ) #:prefab)
-
-(define no-ctx (slctx #f #f (hasheq)))
-
-;; ------------------------------------------------------------
-
-;; Slide style names:
-;; - 'ignore : do not generate slides
-;; - 'next : sub-parts successively extend parent
-;; - 'alts : sub-parts independently extend parent
-
-;; Assumption: aspect does not change during 'next/'alts run
-
-;; slides-from-part : Part Pre -> (values Pre/#f (Pre SlideContext -> SlideContext))
-;; Returns height of body plus slide-maker function.
-(define (slides-from-part p ctx-pre)
-  (match p
-    [(s:part tag-pfx tags title-content0 style to-collect blocks parts)
-     ;; Note: part styles are not inherited.
-     (define title-content
-       (if (memq 'no-title (s:style-properties style)) #f title-content0))
-     (define istyle (add-slide-style style (current-sp-style)))
-     (slides-from-part-contents title-content istyle blocks parts ctx-pre)]))
-
-;; slides-from-part-contents : Content Style (Listof Block) (Listof Part) Pre
-;;                          -> (values Pre/#f (Pre SlideContext -> SlideContext))
-(define (slides-from-part-contents title-content istyle blocks parts ctx-pre)
-  (define mk0 (or (hash-ref istyle 'slide-maker #f) void))
-  (define-values (pre1 mk1) (slide-from-blocks title-content blocks ctx-pre istyle))
-  (define slide-mode (hash-ref istyle 'slide-mode #f))
-  (define-values (pre mk)
-    (case slide-mode
-      [(ignore*)
-       (values ctx-pre (lambda (pre ctx) ctx))]
-      [(next)
-       (for/fold ([pre pre1] [mks (list mk1)]
-                  #:result (values pre (do-next (reverse mks))))
-                 ([p (in-list parts)])
-         (define-values (ppre pmk) (slides-from-part p pre))
-         (values ppre (cons pmk mks)))]
-      [(alts ignore #f)
-       (define ignore? (eq? slide-mode 'ignore))
-       (for/fold ([pre (if ignore? ctx-pre pre1)] [mks (if ignore? null (list mk1))]
-                  #:result (values pre (do-alts (reverse mks))))
-                 ([p (in-list parts)])
-         (define-values (ppre pmk) (slides-from-part p ctx-pre))
-         (values (pre-max pre ppre) (cons pmk mks)))]))
-  (cond [ctx-pre (values pre (lambda (ppre ctx) (mk0) (mk ppre ctx)))]
-        [else (values #f (lambda (ppre ctx) (mk0) (mk pre ctx)))]))
-
-(define ((do-next mks) pre ctx)
-  (for/fold ([ctx ctx]) ([mk (in-list mks)])
-    (mk pre ctx)))
-
-(define ((do-alts mks) pre ctx0)
-  (for/fold ([ctx ctx0]) ([mk (in-list mks)])
-    (mk pre ctx0)))
-
-;; slide-from-blocks : Content (Listof Block) Pre Style
-;;                  -> (values Pre (Pre SlideContext -> SlideContext))
-(define (slide-from-blocks title-content blocks ctx-pre slide-istyle)
-  (define new-pre0
-    (pre-has-title (or ctx-pre (empty-pre))
-                   (and (member title-content '(#f ())) #t)))
-  (define-values (layer=>pict new-h)
-    (for/fold ([layer=>pict (hasheq)]
-               [new-pre new-pre0])
-              ([(lay rblocks) (in-hash (split-blocks-by-layer blocks))])
-      (define istyle (if lay (send lay update-style slide-istyle) slide-istyle))
-      (define body-p (flow->pict (reverse rblocks) istyle))
-      (values (hash-set layer=>pict lay body-p)
-              (pre-update-layer new-pre lay body-p))))
-  (define (mk pre ctx)
-    (match-define (slctx ctx-title ctx-layout ctx-layers) ctx)
-    (define aspect (hash-ref slide-istyle 'slide-aspect #f))
-    (define layout (hash-ref slide-istyle 'slide-layout ctx-layout))
-    (define title-p
-      (match title-content
-        [(list "..") ctx-title]
-        [(or #f '()) #f]
-        [else (let ([istyle (get-title-istyle base-istyle)]) ;; FIXME: use slide-istyle
-                (let ([p (content->pict title-content istyle +inf.0)])
-                  (inset p 0 (- title-h (pict-height p)) 0 0)))]))
-    (define layer=>picts
-      (for/fold ([layer=>picts ctx-layers])
-                ([(lay body-p) (in-hash layer=>pict)])
-        (hash-append layer=>picts lay (list body-p))))
-    (define page
+    (define/override (emit-page title-p sstyles st layer=>picts)
+      (define layout (hash-ref sstyles 'layout #f))
+      (define aspect (hash-ref sstyles 'aspect #f))
+      (define (inset-title p) (inset p 0 (- title-h (pict-height p)) 0 0))
       (parameterize ((current-slide-config
-                      (new slide-config% (title? (and title-p #t)) (aspect aspect) (layout #f))))
-        (for/fold ([base (get-full-page #:aspect #f)])
-                  ([lay (in-list (sort (hash-keys layer=>picts) layer<?))])
-          (match-define (preinfo title? layers) pre)
-          (define ps (hash-ref layer=>picts lay))
-          (define lpre (hash-ref layers lay))
-          (let ([lay (if (eq? lay initial-default-layer) (make-default-layer title-p layout) lay)])
-            (send lay place ps lpre base)))))
-    (slide/full #:title title-p #:aspect aspect page)
-    (slctx title-p layout layer=>picts))
-  (values new-h mk))
-
-;; split-blocks-by-layer : (Listof Block) -> Hash[Layer/#f => (Listof Block), reversed]
-(define (split-blocks-by-layer blocks)
-  (define (hash-cons h k v) (hash-set h k (cons v (hash-ref h k null))))
-  (define (get-layer style)
-    (for/or ([p (in-list (s:style-properties style))] #:when (layer? p)) p))
-  (let loop ([h (hasheq)] [blocks blocks] [layer initial-default-layer])
-    (for/fold ([h h]) ([b (in-list blocks)])
-      (match b
-        [(s:compound-paragraph style blocks)
-         (cond [(get-layer style)
-                => (lambda (in-layer) (loop h blocks in-layer))]
-               [else (hash-cons h layer b)])]
-        [b (hash-cons h layer b)]))))
+                      (new slide-config% (title? (and title-p #t))
+                           (aspect aspect) (layout layout))))
+        (define page (compose-page (get-full-page #:aspect #f) st layer=>picts))
+        (slide/full #:title (and title-p (inset-title title-p)) #:aspect aspect page)))
+    ))
 
 ;; PRE: page has same dimensions as (get-full-page #:aspect #f).
 (define (slide/full #:title title-p #:aspect aspect page)
@@ -374,17 +198,31 @@
   (new overflow-placer% (halign halign) (valign valign)
        (overflow-valign overflow-valign) (sep sep)))
 
-(define (make-default-layer title? layout)
-  (case layout
-    [(center) (layer #:z 0 (coord 1/2 1/2 'cc) (slide-zone 'main/full))]
-    [(top) (layer #:z 0 (coord 1/2 0 'ct) (slide-zone (if title? 'body 'full)))]
-    [(tall) (layer #:z 0 (coord 1/2 0 'ct) (slide-zone (if title? 'tall-body 'full)))]
-    [(auto #f) (layer #:z 0 (overflow-placer) (slide-zone 'main/full))]))
+(define default-layer%
+  (class h-layer-base%
+    (super-new (gap (current-gap-size)))
 
-(define initial-default-layer (make-default-layer #f 'center))
+    (define center-layer (layer #:z 0 (coord 1/2 1/2 'cc) (slide-zone 'main/full)))
+    (define t-top-layer (layer #:z 0 (coord 1/2 0 'ct) (slide-zone 'body)))
+    (define t-tall-layer (layer #:z 0 (coord 1/2 0 'ct) (slide-zone 'tall-body)))
+    (define auto-layer (layer #:z 0 (overflow-placer) (slide-zone 'main/full)))
+    (define tl-layer (layer #:z 0 (coord 1/2 0 'ct) (slide-zone 'full)))
+
+    (define/override (place ps lpre base)
+      (define conf (get-slide-config 'default-layer))
+      (define title? (send conf slide-title?))
+      (define dispatch-lay
+        (case (send conf slide-layout)
+          [(center) center-layer]
+          [(top) (if title? t-top-layer tl-layer)]
+          [(tall) (if title? t-tall-layer tl-layer)]
+          [(auto #f) auto-layer]))
+      (send dispatch-lay place ps lpre base))
+    ))
+
+(define initial-default-layer (new default-layer%))
 
 ;;FIXME: rx ry align #:width ...
-
 (define (make-layer rx1 rx2 ry align
                     #:aspect [aspect 'fullscreen]
                     #:layout [layout 'top]
