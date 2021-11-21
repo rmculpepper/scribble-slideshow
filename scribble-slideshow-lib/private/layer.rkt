@@ -125,7 +125,7 @@
     ;; combine-picts : (Listof Pict) LayerPre -> Pict
     (define/public (combine-picts ps lpre)
       (define-values (p _newsep) (send placer compose-elements ps))
-      (inset-to/align p #f lpre (make-align halign 'c)))
+      (inset-to/align p #f lpre (make-align halign 't)))
     ))
 
 ;; ----------------------------------------

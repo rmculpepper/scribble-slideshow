@@ -10,6 +10,8 @@
          part/make-slides
          in-style
          in-layer
+         layer
+         slide-zone
          make-layer)
 
 ;; ----------------------------------------

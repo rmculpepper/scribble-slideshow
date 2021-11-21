@@ -87,6 +87,10 @@
       (match-define (cons current-path-h all-paths-h) st)
       (hash-ref current-path-h lay #f))
 
+    (define/public (state-ref/all st lay)
+      (match-define (cons current-path-h all-paths-h) st)
+      (hash-ref all-paths-h lay #f))
+
     (define/public (state-set st lay lpre)
       (match-define (cons current-path-h all-paths-h) st)
       (hash-set! current-path-h lay lpre)
@@ -155,7 +159,7 @@
         (for/fold ([layer=>pict (hasheq)])
                   ([(lay rblocks) layer=>blocks])
           (define istyle* (send lay update-style istyle))
-          (define body-p (flow->pict (reverse rblocks) istyle))
+          (define body-p (flow->pict (reverse rblocks) istyle*))
           (state-set st lay (send lay update-pre (state-ref st lay) body-p))
           (hash-set layer=>pict lay body-p)))
       (define (render post)
@@ -180,7 +184,7 @@
       (for/fold ([base base])
                 ([lay (in-list (sort (hash-keys layer=>picts) layer<?))])
         (define ps (hash-ref layer=>picts lay))
-        (define lpre (state-ref st lay))
+        (define lpre (state-ref/all st lay))
         (send lay place ps lpre base)))
 
     (abstract emit-page)
