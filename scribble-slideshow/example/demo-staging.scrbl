@@ -8,18 +8,28 @@
 @; has the style 'next, then all sections in this file (but not subsections)
 @; incrementally add to the content immediately belonging to the title.
 
-@title[#:style 'next]{An example of staging}
+@title{An example of staging}
 
-This slide keeps adding paragraphs...
+This slide will have several paragraphs.
 
-@section[#:style 'alts]{..}     @; The special title ".." means reuse previous.
+@section[#:style 'alt]{..}     @; The special title ".." means reuse previous.
 
-Here is another.
+Here is the first addition, added using @racket['alt], so it will be
+retracted at the end of this @emph{section}.
 
-@subsection{..}
+@subsection[#:style 'next]{..}
+
+This @racket['next] addition is in a @emph{subsection}, though, so it
+gets to build on the previous slide's content before it is retracted.
+
+@subsection[#:style 'digress]{A majestik digression}
+
+Mynd you, møøse bites Kan be pretti nasti.
+
+@section[#:style 'next]{..}
 
 Whoops, I take that back. We'll go with this one instead. I like this one better.
 
-@section{Staging is finished!}
+@section[#:style 'next]{Staging is finished!}
 
 This is the last one. Notice the title is different.

@@ -46,9 +46,6 @@
                                'inset-to-width #t)))
       (p:frame (apply flow-pict pre-flow))))
 
-  (define left-layer (make-layer 0.0 0.35 1/2 'lc))
-  (define right-layer (make-layer 0.4 1.0 1/2 'lc))
-
    #;
    (let ()
      (local-require slideshow)
@@ -140,6 +137,10 @@ It says @bold{more} things, things that aren't said on the left.
 ]
 
 @section{Two-column slides using layers}
+
+@(begin
+  (define left-layer (make-layer 0.0 0.36 1/4 'lt))
+  (define right-layer (make-layer 0.4 1.0 1/4 'lt)))
 
 @in-layer[#:layer left-layer]{
 On the left, we have some text. It says a few things.
