@@ -8,6 +8,7 @@
          ppict/pict
          ppict/align
          ppict/zone
+         (only-in ppict/private/ppict associative-placer<%>)
          "style.rkt")
 (provide (all-defined-out))
 
@@ -48,8 +49,7 @@
 
 (define layer-base%
   (class* object% (layer<%>)
-    (init-field [style (hasheq)]    ;; StyleHash, should set 'block-width
-                [z (next-auto-z)])  ;; Real
+    (init-field z style)
     (super-new)
 
     ;; FIXME: change style field to upstyle (SPStyle -> SPStyle) ??
@@ -57,9 +57,7 @@
     (define/public (get-z) z)
 
     (define/public (update-style istyle)
-      (for/fold ([istyle istyle])
-                ([(k v) (in-hash style)])
-        (hash-set istyle k v)))
+      (merge-styles istyle style))
 
     (abstract update-pre)
     (abstract max-pre)
@@ -112,15 +110,24 @@
 
 (define layer%
   (class h-layer-base%
-    (init-field placer  ;; RefpointPlacer
-                zone)   ;; Zone, used to update style with width?
-    (inherit get-gap)
-    (super-new)
+    (init-field placer  ;; Placer, mainly RefpointPlacer + OverflowPlacer
+                zone    ;; Zone, used to update style with width?
+                options);; (Listof Symbol), like 'block-width
+    (super-new (gap (send placer get-sep)))
 
     (define zplacer (subplacer placer zone))
-    (define halign
-      (or (send placer check-associative-vcompose)
-          (error 'layer "placer has incompatible compose function: ~e" placer)))
+    (unless (is-a? placer associative-placer<%>)
+      (error 'layer "incompatible placer: ~e" placer))
+    (unless (send placer check-associative-vcompose)
+      (error 'layer "placer has incompatible compose function: ~e" placer))
+
+    (define/override (update-style istyle)
+      (let-values ([(w h x y) (send zone get-zone (blank))])
+        (let* ([istyle (hash-set istyle 'layer-width w)]
+               [istyle (if (set-width?) (hash-set istyle 'block-width w) istyle)])
+          (super update-style istyle))))
+
+    (define/private (set-width?) (memq 'block-width options))
 
     ;; place : (Listof Pict) LayerPre Pict -> Pict
     (define/override (place ps lpre base)
@@ -130,16 +137,10 @@
     ;; combine-picts : (Listof Pict) LayerPre -> Pict
     (define/public (combine-picts ps lpre)
       (define-values (p _newsep) (send placer compose-elements ps))
-      (inset-to/align p #f lpre (make-align halign 't)))
+      (inset-to/align p #f lpre 'ct))
     ))
 
 ;; ----------------------------------------
-
-(define (layer placer zone
-               #:z [z (next-auto-z)]
-               #:gap [gap 24]
-               #:style [style (hasheq)])
-  (new layer% (z z) (gap gap) (style style) (placer placer) (zone zone)))
 
 ;; FIXME: add [#:block-width rel/abs], set in update-style?
 

@@ -58,6 +58,14 @@
     (inherit compose-page)
     (super-new (initial-default-layer initial-default-layer))
 
+    (define/override (handle-part-blocks sstyles title blocks st)
+      (parameterize ((current-slide-config
+                      (new slide-config%
+                           (title? #t)
+                           (aspect (hash-ref sstyles 'aspect #f))
+                           (layout (hash-ref sstyles 'layout #f)))))
+        (super handle-part-blocks sstyles title blocks st)))
+
     (define/override (emit-page title-p sstyles st layer=>picts)
       (define layout (hash-ref sstyles 'layout #f))
       (define aspect (hash-ref sstyles 'aspect #f))
@@ -169,39 +177,19 @@
 
 (require (only-in ppict/private/ppict placer-base% apply-compose)) ;; FIXME!
 
-(define overflow-placer%
-  (class placer-base%
-    (init-field halign valign overflow-valign sep)
-    (super-new)
-
-    (define compose (halign->vcompose halign))
-    (define/public (check-associative-vcompose) halign)
-
-    (define/public (compose-elements elems)
-      (apply-compose compose sep elems))
-
-    (define/override (place* scene iw ih ix iy elems)
-      (define x (+ ix (* iw (align->frac halign))))
-      (define-values (newpict newsep) (compose-elements elems))
-      (cond [(<= (pict-height newpict) ih)
-             (define y (+ iy (* ih (align->frac valign))))
-             (pin-over/align scene x y halign valign newpict)]
-            [else
-             (define y (+ iy (* ih (align->frac overflow-valign))))
-             (pin-over/align scene x y halign overflow-valign newpict)]))
-    ))
-
-(define (overflow-placer #:halign [halign 'c]
-                         #:valign [valign 'c]
-                         #:overflow-valign [overflow-valign 't]
-                         #:sep [sep 0])
-  (new overflow-placer% (halign halign) (valign valign)
-       (overflow-valign overflow-valign) (sep sep)))
+(define (layer align/placer zone
+               #:z [z (next-auto-z)]
+               #:style [style (hasheq)])
+  (define placer
+    (cond [(placer? align/placer) align/placer]
+          [else (aligned-placer align/placer #:sep (current-gap-size))]))
+  (define options '(block-width))
+  (new layer% (z z) (style style) (placer placer) (zone zone) (options options)))
 
 (define default-layer%
   (class h-layer-base%
     (inherit-field gap)
-    (super-new (gap (current-gap-size)))
+    (super-new (z 0) (gap (current-gap-size)) (style (hasheq)))
 
     (define center-layer (layer #:z 0 (coord 1/2 1/2 'cc #:sep gap) (slide-zone 'main/full)))
     (define t-top-layer (layer #:z 0 (coord 1/2 0 'ct #:sep gap) (slide-zone 'body)))

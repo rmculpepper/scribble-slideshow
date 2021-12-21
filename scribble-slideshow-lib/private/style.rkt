@@ -86,11 +86,11 @@
 
 ;; ------------------------------------------------------------
 
-;; FIXME: allow styleh to also extend/update existing keys
 (define (merge-styles base-istyle styleh)
-  (for/fold ([base-istyle base-istyle])
+  (for/fold ([istyle base-istyle])
             ([(k v) (in-hash styleh)])
-    (hash-set base-istyle k v)))
+    (cond [(procedure? v) (hash-set istyle k (v base-istyle))]
+          [else (hash-set istyle k v)])))
 
 ;; ------------------------------------------------------------
 ;; Basic Styles
