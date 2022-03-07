@@ -104,7 +104,7 @@
         [['() ps2] ps2]
         [[(cons p1 ps1) (cons p2 ps2)]
          (cons (blank (max (pict-width p1) (pict-width p2))
-                        (max (pict-height p1) (pict-height p2)))
+                      (max (pict-height p1) (pict-height p2)))
                (max-pre ps1 ps2))]))
     ))
 
