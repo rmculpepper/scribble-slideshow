@@ -100,7 +100,6 @@
     gap     ;; -> Real
     ))
 
-;; FIXME: Move to slide.rkt
 (define slide-config%
   (class object%
     (init-field title? layout aspect)
