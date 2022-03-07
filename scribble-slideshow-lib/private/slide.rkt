@@ -188,11 +188,11 @@
     (inherit-field gap)
     (super-new (z 0) (gap (current-gap-size)) (style (hasheq)))
 
-    (define center-layer (layer #:z 0 (coord 1/2 1/2 'cc #:sep gap) (slide-zone 'main/full)))
-    (define t-top-layer (layer #:z 0 (coord 1/2 0 'ct #:sep gap) (slide-zone 'body)))
-    (define t-tall-layer (layer #:z 0 (coord 1/2 0 'ct #:sep gap) (slide-zone 'tall-body)))
+    (define center-layer (layer #:z 0 (aligned-placer 'cc #:sep gap) (slide-zone 'main/full)))
+    (define t-top-layer (layer #:z 0 (aligned-placer 'ct #:sep gap) (slide-zone 'body)))
+    (define t-tall-layer (layer #:z 0 (aligned-placer 'ct #:sep gap) (slide-zone 'tall-body)))
     (define auto-layer (layer #:z 0 (overflow-placer #:sep gap) (slide-zone 'main/full)))
-    (define tl-layer (layer #:z 0 (coord 1/2 0 'ct #:sep gap) (slide-zone 'full)))
+    (define tl-layer (layer #:z 0 (aligned-placer 'ct #:sep gap) (slide-zone 'full)))
 
     (define/override (place ps lpre base)
       (define conf (get-slide-config 'default-layer))
