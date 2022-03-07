@@ -174,8 +174,6 @@
 ;; ============================================================
 ;; Default placer for 'auto
 
-(require (only-in ppict/private/ppict placer-base% apply-compose)) ;; FIXME!
-
 (define (layer align/placer zone
                #:z [z (next-auto-z)]
                #:style [style (hasheq)])
