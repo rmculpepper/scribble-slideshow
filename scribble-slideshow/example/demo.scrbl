@@ -76,13 +76,15 @@
 
    ;; Here we change some base style defaults.
 
-   (current-sp-style
-    (hash-set* (current-sp-style)
-               'text-base 'roman
-               'slide-title-base '(bold . swiss))))
+   (define talk-style
+     (style #f (list 'widescreen
+                     (style-transformer
+                      (lambda (istyle)
+                        (hash-set* istyle
+                                   'text-base 'roman
+                                   'slide-title-base '(bold . swiss))))))))
 
-
-@title[#:style 'widescreen]{Demo of @racketmodname[scribble-slideshow] language}
+@title[#:style talk-style]{Demo of @racketmodname[scribble-slideshow] language}
 
 This whole slide consists of a @italic{flow}, which contains multiple
 @tt{paragraphs}. In turn, @tt{paragraphs} consist of
