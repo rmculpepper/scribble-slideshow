@@ -44,16 +44,15 @@
 
 (define parts-renderer%
   (class object%
-    (init-field istyle
-                initial-default-layer)
+    (init-field initial-default-layer)
     (super-new)
 
-    (define/public (render-parts parts)
-      (define-values (st* tx) (handle-parts parts (fresh-state)))
+    (define/public (render-parts istyle parts)
+      (define-values (st* tx) (handle-parts istyle parts (fresh-state)))
       (void (tx (fresh-post-state))))
 
-    (define/public (render-part part)
-      (render-parts (list part)))
+    (define/public (render-part istyle part)
+      (render-parts istyle (list part)))
 
     ;; ----------------------------------------
 
@@ -101,20 +100,21 @@
 
     ;; ----------------------------------------
 
-    ;; handle-parts : (Listof Part) PreState -> (values PreState PostTx)
-    (define/public (handle-parts ps st)
+    ;; handle-parts : IStyle (Listof Part) PreState -> (values PreState PostTx)
+    (define/public (handle-parts istyle ps st)
       (define-values (st* txs)
         (for/fold ([st st] [rtxs null]
                    #:result (values st (reverse rtxs)))
                   ([p (in-list ps)])
-          (define-values (st* tx) (handle-part p st))
+          (define-values (st* tx) (handle-part istyle p st))
           (values st (cons tx rtxs))))
       (values st* (lambda (post) (for/fold ([post post]) ([f (in-list txs)]) (f post)))))
 
-    ;; handle-part : Part PreState -> (values PreState PostTx)
-    (define/public (handle-part p in-st)
+    ;; handle-part : IStyle Part PreState -> (values PreState PostTx)
+    (define/public (handle-part istyle p in-st)
       (match-define (part _ _ title0 style _ blocks parts) p)
       (define sstyles (add-slide-styles style (hash-ref istyle 'slide-styles (hasheq))))
+      (define istyle* (add-style style istyle #:no-warn slide-style-keys))
       (case (hash-ref sstyles 'ignore #f)
         [(ignore*)
          (values in-st (lambda (post) post))]
@@ -123,7 +123,7 @@
          (define maker (or (hash-ref sstyles 'maker #f) void))
          (define title (if (hash-ref sstyles 'no-title #f) #f title0))
          (define-values (final-st ptx)
-           (handle-part* sstyles title blocks parts (get-start-state slide-mode in-st)))
+           (handle-part* istyle* sstyles title blocks parts (get-start-state slide-mode in-st)))
          (values (get-end-state slide-mode in-st final-st)
                  (case slide-mode
                    [(next)    (lambda (post) (maker) (ptx post))]
@@ -132,12 +132,12 @@
                    [(digress) (lambda (post) (maker) (ptx (fresh-post-state)) post)]))]))
 
     ;; handle-part* : __ -> (values PreState PostTx)
-    (define/public (handle-part* sstyles title blocks parts start-st)
+    (define/public (handle-part* istyle sstyles title blocks parts start-st)
       (define bs-tx
         (case (hash-ref sstyles 'ignore #f)
           [(ignore) (lambda (post) post)]
-          [else (handle-part-blocks sstyles title blocks start-st)]))
-      (define-values (final-st subs-tx) (handle-parts parts start-st))
+          [else (handle-part-blocks istyle sstyles title blocks start-st)]))
+      (define-values (final-st subs-tx) (handle-parts istyle parts start-st))
       (values final-st (lambda (post) (subs-tx (bs-tx post)))))
 
     ;; ----------------------------------------
@@ -152,7 +152,7 @@
     (define/public (fresh-post-state) (cons #f (hasheqv)))
 
     ;; handle-part-blocks : __ -> PostTx
-    (define/public (handle-part-blocks sstyles title blocks st)
+    (define/public (handle-part-blocks istyle sstyles title blocks st)
       (define aspect (hash-ref sstyles 'aspect #f))
       (define layer=>blocks (split-blocks-by-layer blocks initial-default-layer))
       (define layer=>pict
@@ -164,7 +164,7 @@
           (hash-set layer=>pict lay body-p)))
       (define (render post)
         (match-define (cons in-title-p in-layer=>picts) post)
-        (define title-p (get-title-pict title in-title-p))
+        (define title-p (get-title-pict istyle title in-title-p))
         (define layer=>picts
           (for/fold ([layer=>picts in-layer=>picts])
                     ([(lay body-p) (in-hash layer=>pict)])
@@ -173,7 +173,7 @@
         (cons title-p layer=>picts))
       render)
 
-    (define/public (get-title-pict title in-title-p)
+    (define/public (get-title-pict istyle title in-title-p)
       (match title
         [(list "..") in-title-p]
         [(or #f '()) #f]
@@ -236,6 +236,13 @@
     ;; ----
     ;; standard scribble part styles seem irrelevant, ignore
     [_ sstyles]))
+
+(define slide-style-keys
+  '(auto center top tall
+    widescreen fullscreen
+    next alt digress
+    ignore ignore*
+    no-title))
 
 ;; FIXME: move to single 'title-styles key?
 (define (get-title-istyle istyle)

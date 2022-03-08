@@ -34,8 +34,8 @@
 
 (define (scribble-slides* p)
   (parameterize ((current-resolve-info (get-resolve-info (list p))))
-    (define renderer (new slide-parts-renderer% (istyle (current-sp-style))))
-    (send renderer render-part p)))
+    (define renderer (new slide-parts-renderer%))
+    (send renderer render-part (current-sp-style) p)))
 
 ;; ------------------------------------------------------------
 
@@ -58,13 +58,13 @@
     (inherit compose-page)
     (super-new (initial-default-layer initial-default-layer))
 
-    (define/override (handle-part-blocks sstyles title blocks st)
+    (define/override (handle-part-blocks istyle sstyles title blocks st)
       (parameterize ((current-slide-config
                       (new slide-config%
                            (title? #t)
                            (aspect (hash-ref sstyles 'aspect #f))
                            (layout (hash-ref sstyles 'layout #f)))))
-        (super handle-part-blocks sstyles title blocks st)))
+        (super handle-part-blocks istyle sstyles title blocks st)))
 
     (define/override (emit-page title-p sstyles st layer=>picts)
       (define layout (hash-ref sstyles 'layout #f))

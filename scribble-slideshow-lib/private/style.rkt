@@ -105,13 +105,15 @@
 ;; - 'text-post : (Listof (Pict -> Pict))
 ;; - 'elem-post : (Listof (Pict -> Pict))
 
-(define (add-style s istyle)
+(define (add-style s istyle #:no-warn [no-warn null])
   (match s
     [(s:style name props)
-     (foldl add-style-prop (add-style name istyle) props)]
-    [s (add-simple-style s istyle)]))
+     (for/fold ([istyle (add-style name istyle #:no-warn no-warn)])
+               ([prop (in-list props)])
+       (add-style-prop prop istyle no-warn))]
+    [s (add-simple-style s istyle no-warn)]))
 
-(define (add-simple-style s istyle)
+(define (add-simple-style s istyle [no-warn null])
   (case s
     [(italic bold subscript superscript #||# combine no-combine aligned unaligned)
      (hash-cons istyle 'text-mods s)]
@@ -155,10 +157,11 @@
     [(hspace) (hash-set* istyle 'text-base 'modern 'white-space 'pre)]
     [(#f) istyle]
     [else
-     (log-scribble-slideshow-warning "add-style: ignoring: ~e" s)
+     (unless (member s no-warn)
+       (log-scribble-slideshow-warning "add-style: ignoring: ~e" s))
      istyle]))
 
-(define (add-style-prop prop istyle)
+(define (add-style-prop prop istyle [no-warn null])
   (match prop
     [(text-post-property post)
      (hash-cons istyle 'text-post post)]
@@ -176,7 +179,8 @@
     ['tt-chars istyle]
     [(or 'omitable 'never-indents 'decorative) istyle] ;; FIXME?
     [_
-     (log-scribble-slideshow-warning "add-style-prop: ignoring: ~e" prop)
+     (unless (member prop no-warn)
+       (log-scribble-slideshow-warning "add-style-prop: ignoring: ~e" prop))
      istyle]))
 
 ;; ------------------------------------------------------------
