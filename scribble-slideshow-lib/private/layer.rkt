@@ -112,7 +112,9 @@
   (class h-layer-base%
     (init-field placer  ;; Placer, mainly RefpointPlacer + OverflowPlacer
                 zone    ;; Zone, used to update style with width?
-                options);; (Listof Symbol), like 'block-width
+                options ;; (Listof Symbol), like 'block-width
+                [pre-decorator #f]   ;; Pict -> Pict
+                [post-decorator #f]) ;; Pict -> Pict
     (super-new (gap (send placer get-sep)))
 
     (define zplacer (subplacer placer zone))
@@ -137,7 +139,13 @@
     ;; combine-picts : (Listof Pict) LayerPre -> Pict
     (define/public (combine-picts ps lpre)
       (define-values (p _newsep) (send placer compose-elements ps))
-      (inset-to/align p #f lpre 'ct))
+      (define dp (pre-decorate p))
+      (post-decorate (inset-to/align dp #f lpre 'ct)))
+
+    (define/public (pre-decorate p)
+      (if pre-decorator (pre-decorator p) p))
+    (define/public (post-decorate p)
+      (if post-decorator (post-decorator p) p))
     ))
 
 ;; ----------------------------------------

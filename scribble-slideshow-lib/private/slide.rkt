@@ -176,12 +176,15 @@
 
 (define (layer align/placer zone
                #:z [z (next-auto-z)]
-               #:style [style (hasheq)])
+               #:style [style (hasheq)]
+               #:pre-decorate [pre-decorator #f]
+               #:post-decorate [post-decorator #f])
   (define placer
     (cond [(placer? align/placer) align/placer]
           [else (aligned-placer align/placer #:sep (current-gap-size))]))
   (define options '(block-width))
-  (new layer% (z z) (style style) (placer placer) (zone zone) (options options)))
+  (new layer% (z z) (style style) (placer placer) (zone zone) (options options)
+       (pre-decorator pre-decorator) (post-decorator post-decorator)))
 
 (define default-layer%
   (class h-layer-base%
