@@ -6,13 +6,12 @@
          racket/list
          racket/class
          racket/hash
+         racket/promise
+         racket/lazy-require
          (prefix-in s: scribble/core)
          (prefix-in s: scribble/html-properties)
          (prefix-in s: scribble/latex-properties)
          (prefix-in s: scribble/decode)
-         (only-in slideshow/base
-                  slide get-full-page
-                  title-h margin current-gap-size get-client-w get-client-h)
          pict
          ppict/pict
          ppict/zone
@@ -60,7 +59,7 @@
 
     (define/override (handle-part-blocks istyle sstyles title blocks st)
       (parameterize ((current-slide-config
-                      (new slide-config%
+                      (new (get-slide-config%)
                            (title? #t)
                            (aspect (hash-ref sstyles 'aspect #f))
                            (layout (hash-ref sstyles 'layout #f)))))
@@ -69,14 +68,15 @@
     (define/override (emit-page title-p sstyles st layer=>picts)
       (define layout (hash-ref sstyles 'layout #f))
       (define aspect (hash-ref sstyles 'aspect #f))
-      (define (inset-title p) (inset p 0 (- title-h (pict-height p)) 0 0))
-      (parameterize ((current-slide-config
-                      (new slide-config% (title? (and title-p #t))
-                           (aspect aspect) (layout layout))))
-        (define page (compose-page (get-full-page #:aspect #f) st layer=>picts))
-        (slide/full #:title (and title-p (inset-title title-p)) #:aspect aspect page)))
+      (define config
+        (new (get-slide-config%) (title? (and title-p #t))
+             (aspect aspect) (layout layout)))
+      (parameterize ((current-slide-config config))
+        (define page (compose-page (send config fullpage) st layer=>picts))
+        (send config slide/full title-p aspect page)))
     ))
 
+#;
 ;; PRE: page has same dimensions as (get-full-page #:aspect #f).
 (define (slide/full #:title title-p #:aspect aspect page)
   (slide #:title title-p #:layout 'tall #:aspect aspect
@@ -100,8 +100,49 @@
     gap     ;; -> Real
     ))
 
-(define slide-config%
+(define dummy-slideshow-config%
   (class object%
+    (super-new)
+    (define margin 20)
+    (define/public (clientw aspect) (- (screenw aspect) margin margin))
+    (define/public (clienth aspect) (- (screenh aspect) margin margin))
+    (define/public (titleh) 40)
+    (define/public (get-margin) margin)
+    (define/public (gap [n 1]) (* n 24))
+    (define/public (screenw aspect)
+      (case aspect [(widescreen) 1360] [else 1024]))
+    (define/public (screenh aspect)
+      (case aspect [(widescreen) 766] [else 768]))
+    (define/public (fullpage aspect) (blank (clientw #f) (clienth #f)))
+    (define/public (emit-slide title aspect page) (void))
+    ))
+
+(module+ slideshow
+  (require (only-in slideshow/base
+                    slide get-full-page
+                    title-h margin current-gap-size get-client-w get-client-h))
+  (provide get-slideshow-config%)
+  (define slideshow-config%
+    (class object%
+      (super-new)
+      (define/public (clientw aspect) (get-client-w #:aspect aspect))
+      (define/public (clienth aspect) (get-client-h #:aspect aspect))
+      (define/public (titleh) title-h)
+      (define/public (get-margin) margin)
+      (define/public (gap [n 1]) (* n (current-gap-size)))
+      (define/public (screenw aspect)
+        (+ (clientw aspect) margin margin))
+      (define/public (screenh aspect)
+        (+ (clienth aspect) margin margin))
+      (define/public (fullpage) (get-full-page #:aspect #f))
+      (define/public (emit-slide title aspect page)
+        (slide page #:title title #:aspect aspect #:layout 'tall))
+      ))
+  (define (get-slideshow-config%) slideshow-config%))
+(lazy-require [(submod "." slideshow) (get-slideshow-config%)])
+
+(define (slide-config-mixin base%)
+  (class base%
     (init-field title? layout aspect)
     (super-new)
     ;; Slide-specific
@@ -109,31 +150,29 @@
     (define/public (slide-layout) layout)
     (define/public (slide-aspect) aspect)
     ;; Global settings
-    (define/public (clientw aspect) (get-client-w #:aspect aspect))
-    (define/public (clienth aspect) (get-client-h #:aspect aspect))
-    (define/public (titleh) title-h)
-    (define/public (get-margin) margin)
-    (define/public (gap [n 1]) (* n (current-gap-size)))
-
-    (define/public (screenw aspect)
-      (+ (clientw aspect) margin margin))
-    (define/public (screenh aspect)
-      (+ (clienth aspect) margin margin))
+    (inherit clientw clienth titleh get-margin gap screenw screenh emit-slide)
     (define/public (get-screen-dx aspect)
       (if aspect (/ (- (clientw #f) (clientw aspect)) 2) 0))
+
+    (define/public (slide/full title-p aspect page)
+      (define (inset-title p) (inset p 0 (- (titleh) (pict-height p)) 0 0))
+      (let ([title-p (and title-p (inset-title title-p))])
+        (define y (if title-p (- 0 (titleh) (gap)) 0))
+        (emit-slide title-p aspect (inset page 0 y 0 0))))
 
     (define/public (slide-zone-f name aspect)
       (case name
         ;; Vertically centered, title?-independent
         [(main)
-         (define dh (+ title-h (gap 2)))
+         (define dh (+ (titleh) (gap 2)))
          (values (clientw aspect) (- (clienth aspect) dh dh) (get-screen-dx aspect) dh)]
         [(tall-main)
-         (define dh (+ title-h (gap 1)))
+         (define dh (+ (titleh) (gap 1)))
          (values (clientw aspect) (- (clienth aspect) dh dh) (get-screen-dx aspect) dh)]
         [(full)
          (values (clientw aspect) (clienth aspect) (get-screen-dx aspect) 0)]
         [(screen)
+         (define margin (get-margin))
          (values (screenw aspect) (screenh aspect) (- (get-screen-dx aspect) margin) (- margin))]
         ;; Vertically centered, title?-dependent
         [(main/full)
@@ -142,17 +181,24 @@
              (slide-zone-f 'full aspect))]
         ;; Non-centered, title?-independent
         [(body)
-         (define dh (+ title-h (* 2 (current-gap-size))))
+         (define dh (+ (titleh) (gap 2)))
          (values (clientw aspect) (- (clienth aspect) dh) (get-screen-dx aspect) dh)]
         [(tall-body)
-         (define dh (+ title-h (* 1 (current-gap-size))))
+         (define dh (+ (titleh) (gap 1)))
          (values (clientw aspect) (- (clienth aspect) dh) (get-screen-dx aspect) dh)]
         [(title)
-         (values (clientw aspect) title-h 0 0)]
+         (values (clientw aspect) (titleh) 0 0)]
         ;; [(body/client) _]
         ;; [(tall-body/client) _]
         [else (error 'slide-zone "unknown slide-zone name: ~e" name)]))
     ))
+
+(define (get-slide-config%)
+  (define dummy-config% (slide-config-mixin dummy-slideshow-config%))
+  (define slideshow-config%-p (delay (slide-config-mixin (get-slideshow-config%))))
+  (if (module-declared? 'slideshow/base #f)
+      (force slideshow-config%-p)
+      dummy-config%))
 
 (define current-slide-config (make-parameter #f))
 (define (get-slide-config who)
@@ -181,7 +227,7 @@
                #:post-decorate [post-decorator #f])
   (define placer
     (cond [(placer? align/placer) align/placer]
-          [else (aligned-placer align/placer #:sep (current-gap-size))]))
+          [else (aligned-placer align/placer #:sep 24 #;(current-gap-size))]))
   (define options '(block-width))
   (new layer% (z z) (style style) (placer placer) (zone zone) (options options)
        (pre-decorator pre-decorator) (post-decorator post-decorator)))
@@ -200,7 +246,7 @@
 (define default-layer%
   (class h-layer-base%
     (inherit-field gap)
-    (super-new (z 0) (gap (current-gap-size)) (style (hasheq)))
+    (super-new (z 0) (gap 24 #;(current-gap-size)) (style (hasheq)))
 
     (define center-layer (layer #:z 0 (aligned-placer 'cc #:sep gap) (slide-zone 'main/full)))
     (define t-top-layer (layer #:z 0 (aligned-placer 'ct #:sep gap) (slide-zone 'body)))
@@ -222,11 +268,12 @@
 
 (define initial-default-layer (new default-layer%))
 
+#;
 ;;FIXME: rx ry align #:width ...
 (define (make-layer rx1 rx2 ry align
                     #:aspect [aspect 'fullscreen]
                     #:layout [layout 'top]
-                    #:gap [gap (current-gap-size)]
+                    #:gap [gap 24 #;(current-gap-size)]
                     #:style [style (hasheq)]
                     #:z [z (next-auto-z)])
   (define w (* (get-client-w #:aspect 'fullscreen) (- rx2 rx1)))
@@ -238,19 +285,19 @@
 
 (module+ main
   (require ppict/slideshow2
-           (only-in slideshow/base slide get-full-page t))
+           (only-in slideshow/base slide get-full-page t titlet))
 
   (define (test-slide zname title)
-    (parameterize ((current-slide-config
-                    (new slide-config% (title? (and title #t)) (layout #f) (aspect #f))))
-      (slide/full #:title title #:aspect #f
-                  (ppict-do (frame (get-full-page #:aspect #f))
-                            #:go (subplacer (coord 0 0 'cc) (slide-zone zname))
-                            (colorize (disk 20) "red")
-                            #:go (subplacer (coord 1 1 'cc) (slide-zone zname))
-                            (colorize (disk 20) "blue")
-                            #:go (subplacer (coord 1/2 1/2 'cc) (slide-zone zname))
-                            (t (format "zone: ~e" zname))))))
+    (define config (new (get-slide-config%) (title? (and title #t)) (layout #f) (aspect #f)))
+    (parameterize ((current-slide-config config))
+      (send config slide/full (and title (titlet title)) #f
+            (ppict-do (frame (get-full-page #:aspect #f))
+                      #:go (subplacer (coord 0 0 'cc) (slide-zone zname))
+                      (colorize (disk 20) "red")
+                      #:go (subplacer (coord 1 1 'cc) (slide-zone zname))
+                      (colorize (disk 20) "blue")
+                      #:go (subplacer (coord 1/2 1/2 'cc) (slide-zone zname))
+                      (t (format "zone: ~e" zname))))))
 
   (test-slide 'main "main")
   (test-slide 'main #f)
