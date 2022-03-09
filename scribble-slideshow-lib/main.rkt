@@ -12,8 +12,7 @@
          in-layer
          layer
          slide-layer
-         slide-zone
-         make-layer)
+         slide-zone)
 
 ;; ----------------------------------------
 ;; Language
