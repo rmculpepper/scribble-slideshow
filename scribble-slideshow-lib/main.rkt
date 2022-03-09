@@ -11,6 +11,7 @@
          in-style
          in-layer
          layer
+         slide-layer
          slide-zone
          make-layer)
 

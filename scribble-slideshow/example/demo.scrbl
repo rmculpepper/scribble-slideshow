@@ -141,17 +141,17 @@ It says @bold{more} things, things that aren't said on the left.
 @section{Two-column slides using layers}
 
 @(begin
-  (require (only-in pict pict-width pict-height frame cc-superimpose cellophane filled-rectangle) ppict/zone)
+  (require ppict/zone)
   (define left-layer
-    (layer 'lt (subzone (coord-zone 0.0 1/4 0.38 1) (slide-zone 'body))
-           #:pre-decorate (lambda (p) (frame p #:color "red"))))
+    (slide-layer 'lt (coord-zone 0.0 1/4 0.38 1)
+                 #:pre-decorate (lambda (p) (p:frame p #:color "red"))))
   (define right-layer
-    (layer 'lt (subzone (coord-zone 0.4 1/4 1.0 1) (slide-zone 'body))
-           #:post-decorate (lambda (p)
-                             (define bg
-                               (filled-rectangle (pict-width p) (pict-height p)
-                                                 #:color "green" #:draw-border? #f))
-                             (cc-superimpose p (cellophane bg 0.25))))))
+    (slide-layer 'lt (coord-zone 0.4 1/4 1.0 1)
+                 #:post-decorate (lambda (p)
+                                   (define bg
+                                     (p:filled-rectangle (p:pict-width p) (p:pict-height p)
+                                                         #:color "green" #:draw-border? #f))
+                                   (p:cc-superimpose p (p:cellophane bg 0.25))))))
 
 @in-layer[#:layer left-layer]{
 On the left, we have some text. It says a few things.

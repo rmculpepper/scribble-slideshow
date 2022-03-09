@@ -186,6 +186,17 @@
   (new layer% (z z) (style style) (placer placer) (zone zone) (options options)
        (pre-decorator pre-decorator) (post-decorator post-decorator)))
 
+(define (slide-layer align/placer [zone #f]
+                     #:aspect [slide-aspect #f]
+                     #:base [slide-zone-symbol 'body]
+                     #:z [z (next-auto-z)]
+                     #:style [style (hasheq)]
+                     #:pre-decorate [pre-decorator #f]
+                     #:post-decorate [post-decorator #f])
+  (define base-zone (slide-zone slide-zone-symbol #:aspect slide-aspect))
+  (layer align/placer (if zone (subzone zone base-zone) base-zone)
+         #:z z #:style style #:pre-decorate pre-decorator #:post-decorate post-decorator))
+
 (define default-layer%
   (class h-layer-base%
     (inherit-field gap)
