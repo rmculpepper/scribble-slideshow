@@ -13,49 +13,15 @@
 ;; Using the slideshow command allows you to set options, render slides to PDF,
 ;; etc.
 
-#lang scribble-slideshow
+#lang scribble/manual
 @(require (prefix-in p: pict)
-          (only-in slideshow [slide s:slide] [para s:para])
           pict/shadow
           scribble/core
           scribble/base
-          scribble/manual
+          scribble-slideshow/pict
           (for-label racket/base))
 
 @(begin
-
-  ;; FIXME: maybe just add style option(s) to tabular to set column
-  ;; widths, row heights (absolute or fractional?)
-
-  (define (columns #:sep [sep #f] . cols)
-    (local-require (only-in slideshow client-w)
-                   (only-in scribble/base centered))
-    (define (calc-sep)
-      (define total-free-w (- client-w (apply + (map p:pict-width cols))))
-      (max 0
-           #;(/ total-free-w (+ 2 (length cols)))
-           (/ total-free-w (+ 1 (length cols)))))
-    (#;values centered (apply p:ht-append (or sep (calc-sep)) cols)))
-
-  (define (column #:width wfraction #:hmargin [hmargin 24] . pre-flow)
-    (local-require (only-in slideshow client-w))
-    (define istyle (current-sp-style))
-    (parameterize ((current-sp-style
-                    (hash-set* istyle
-                               'block-width (- (* client-w wfraction) hmargin)
-                               'inset-to-width #t)))
-      (p:frame (apply flow-pict pre-flow))))
-
-   #;
-   (let ()
-     (local-require slideshow)
-     (define old-assembler (current-slide-assembler))
-     (define (assembler tp sep body)
-       (let ([tp (if (string? tp) (titlet tp) tp)]
-             [body (vl-append 0 body (blank client-w 0))])
-       (cond [(pict? tp) (vl-append sep tp body)]
-             [else body])))
-     (current-slide-assembler assembler))
 
    ;; Here are some basic helper functions for constructing elements with text
    ;; or background colors, using Scribble's built-in style properties.
@@ -118,25 +84,6 @@ You should not see this slide...
 
 ... and you should not see this either.
 
-
-@section{Two-column slides}
-
-@columns[;; #:sep 50
-
-@column[#:width 1/3]{
-On the left, we have some text. It says a few things.
-}
-
-@column[#:width 2/3]{
-On the right, we have more text.
-
-It says @bold{more} things, things that aren't said on the left.
-
-@racketgrammar*[
-[things few-things more-things]
-]}
-
-]
 
 @section{Two-column slides using layers}
 
@@ -252,17 +199,6 @@ use @racket[flow-pict] to turn a Scribble flow into a pict.
 @; (roughly like slideshow's 'next and 'alts commands).
 
 @include-section["demo-staging.scrbl"]
-
-@(part/make-slides
-  (lambda ()
-   (s:slide
-    @flow-pict{
-
-    Use @racket[part/make-slides] to wrap a slide-emitting function as
-    a Scribble @emph{part}. Any slides produced by the function are
-    inserted at the location of the resulting part.
-
-    })))
 
 @section[#:style 'tall]{Layout}
 

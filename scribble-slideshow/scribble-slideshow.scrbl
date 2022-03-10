@@ -99,6 +99,17 @@ This is another, with some @bold{interesting} @italic{elements.}
 ]}
 
 
+@section{Layers}
+
+
+@examples[#:eval the-eval #:result-only #:label #f
+(require (only-in (lib "scribble-slideshow/example/doc-demo.scrbl") [doc demo-doc])
+         (only-in pict frame scale))
+(for/list ([sp (in-list (scribble-slide-picts demo-doc))])
+  (frame (scale sp 1/4)))
+]
+
+
 @section[#:tag "notes"]{Notes}
 
 The interpretation of Scribble style names and style properties is incomplete,
