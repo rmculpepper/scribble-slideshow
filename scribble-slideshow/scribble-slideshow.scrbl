@@ -1,8 +1,25 @@
 #lang scribble/manual
 @(require scribble/example
-          (for-label racket/base scribble-slideshow
+          (for-label racket/base racket/contract scribble-slideshow
                      scribble/base scribble/core scribble/manual scribble/decode
-                     (only-in pict pict?) (only-in slideshow slide)))
+                     (except-in pict table) pict/shadow
+                     (only-in slideshow slide)))
+
+@(begin
+   (require (for-syntax racket/base racket/string racket/port
+                        syntax/strip-context (prefix-in s: scribble/reader)))
+   (define-syntax (code-example stx)
+     (syntax-case stx ()
+       [(_ str ...)
+        (let ([str* (string-join (syntax->datum #'(str ...)) "")])
+          (define datums
+            (port->list (lambda (in) (s:read-syntax 'code-example in))
+                        (open-input-string str*)))
+          (with-syntax ([(datum ...) (map (lambda (d) (replace-context stx d)) datums)]
+                        [lang-line (syntax-local-introduce #'"#lang at-exp racket/base")])
+            #'(list (codeblock #:keep-lang-line? #f lang-line "\n" str ...)
+                    #;(para "produces:")
+                    (examples #:eval the-eval #:result-only #:label #f datum ...))))])))
 
 @(define (s-tech . pc)
    (apply tech #:doc '(lib "scribblings/scribble/scribble.scrbl") pc))
@@ -13,13 +30,16 @@
 @(define repo "https://github.com/rmculpepper/scribble-slideshow/tree/master")
 
 @(define the-eval (make-base-eval))
-@(the-eval '(require scribble/base scribble/manual scribble-slideshow/pict))
+@(the-eval '(require scribble/base scribble/core scribble/manual
+                     scribble-slideshow/pict
+                     (except-in pict table) pict/shadow))
 
 @title[#:tag "scribble-slideshow"]{scribble-slideshow: Using Scribble to Make Slides}
 
 @defmodule[scribble-slideshow #:lang]
 
 
+@; ============================================================
 @section{Introduction}
 
 This library provides both a @emph{language} and a @emph{library} for writing
@@ -45,6 +65,7 @@ See the @hyperlink[(format "~a/scribble-slideshow/example" repo)]{scribble-slide
 directory for extended, runnable examples.
 
 
+@; ============================================================
 @section[#:tag "scribble-slide"]{Scribble to Slides}
 
 @defproc[(scribble-slides [pre-part pre-part?] ...) void?]{
@@ -66,12 +87,16 @@ slides for that part of the document.
 }
 
 
+@; ============================================================
 @section[#:tag "scribble-pict"]{Scribble to Picts}
 
 @defmodule[scribble-slideshow/pict]
 
 The exports of @racketmodname[scribble-slideshow/pict] are also available from
-@racketmodname[scribble-slideshow].
+@racketmodname[scribble-slideshow]. Unlike @racketmodname[scribble-slideshow],
+@racketmodname[scribble-slideshow/pict] avoids a direct dependency on the
+@racketmodname[slideshow] module, so it can be used in context where the GUI is
+disallowed.
 
 @defproc[(flow-pict [pre-flow pre-flow?] ...)
          pict?]{
@@ -80,27 +105,94 @@ Decodes the @racket[pre-flow]s into Scribble @s-tech{flow} (see
 @racket[decode-flow]) and then converts it to a pict.
 
 For example:
-@codeblock[#:keep-lang-line? #f]|{
-#lang at-exp racket/base
+
+@code-example|{
 @flow-pict{
 This is a paragraph.
 
 This is another, with some @bold{interesting} @italic{elements.}
 }}|
-
-produces the following pict:
-
-@examples[#:eval the-eval #:result-only #:label #f
-@flow-pict{
-This is a paragraph.
-
-This is another, with some @bold{interesting} @italic{elements.}
 }
-]}
+
+@defproc[(scribble-slide-picts [part part?]) (listof pict?)]{
 
 
-@section{Layers}
+}
 
+
+@; ------------------------------------------------------------
+@subsection[#:tag "style"]{Styles}
+
+
+
+@defthing[current-sp-style parameter?]{
+
+@bold{Deprecated.} Use a @racket[style-transformer] in the style of the root
+@s-tech{part} of the Scribble document to set the initial styles instead.
+}
+
+@defproc[(style-transformer [update (-> hash? hash?)]) any/c]{
+
+Returns an opaque value suitable as a Scribble @(styleprop). 
+
+}
+
+@(define (styleprop) (s-tech "style property"))
+
+@defproc[(text-post-property [process (-> pict? pict?)]) any/c]{
+
+Returns an opaque value suitable as a Scribble @(styleprop). When the style
+property is applied to Scribble content, each pict that is produced from an
+embedded string is post-processed with @racket[process]. Text post-processors
+are applied innermost-first, and all text post-processors are applied before any
+element post-processor.
+
+Note that strings may be split into many pieces as part of the line-breaking
+process; the @racket[process] function is applied to each piece individually.
+
+@code-example|{
+@(define (tx-elem f . content)
+   (apply elem #:style (style #f (list (text-post-property f))) content))
+@(define ((shadow-tx rad dxy [color "purple"]) p)
+   (shadow p rad dxy dxy #:shadow-color color))
+@flow-pict{
+Here is some @tx-elem[(shadow-tx 4 2)]{cool @disk[20] text}.
+}}|
+
+Note that the separating pict has no shadow.
+}
+
+@defproc[(elem-post-property [process (-> pict? pict?)]) any/c]{
+
+Returns an opaque value suitable as a Scribble @(styleprop). When the style
+property is applied to Scribble content, each pict that is produced from the
+@s-tech{content} is post-processed with @racket[process]. All element
+post-processors are applied innermost-first.
+
+Note that content may be split into many pieces as part of the line-breaking
+process; the @racket[process] function is applied to each piece individually.
+
+@code-example|{
+@(define (ex-elem f . content)
+   (apply elem #:style (style #f (list (elem-post-property f))) content))
+@flow-pict{
+Here is some @ex-elem[(shadow-tx 4 2)]{cool @disk[20] text}.
+}}|
+
+Note the shadow behind the separating pict.
+}
+
+
+@; ------------------------------------------------------------
+@subsection{Layers}
+
+@;{
+         in-style
+         in-layer
+         layer
+         slide-layer
+         slide-zone
+}
 
 @examples[#:eval the-eval #:result-only #:label #f
 (require (only-in (lib "scribble-slideshow/example/doc-demo.scrbl") [doc demo-doc])
@@ -110,6 +202,7 @@ This is another, with some @bold{interesting} @italic{elements.}
 ]
 
 
+@; ============================================================
 @section[#:tag "notes"]{Notes}
 
 The interpretation of Scribble style names and style properties is incomplete,
@@ -127,5 +220,8 @@ Titles are not baseline-aligned, so titles that result in picts of different
 heights look inconsistent. This might be a slideshow issue.
 
 Staging does not cooperate with slideshow's @tt{--condense} mode.
+
+
+@; ============================================================
 
 @(close-eval the-eval)
