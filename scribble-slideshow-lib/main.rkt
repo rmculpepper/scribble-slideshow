@@ -3,16 +3,11 @@
 
 #lang racket/base
 (require "pict.rkt"
-         "private/slide.rkt")
+         "private/slide.rkt"
+         (submod "private/slide.rkt" slideshow))
 (provide (all-from-out "pict.rkt")
          scribble-slides
-         scribble-slides*
-         part/make-slides
-         in-style
-         in-layer
-         layer
-         slide-layer
-         slide-zone)
+         scribble-slides*)
 
 ;; ----------------------------------------
 ;; Language

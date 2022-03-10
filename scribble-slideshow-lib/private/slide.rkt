@@ -7,7 +7,6 @@
          racket/class
          racket/hash
          racket/promise
-         racket/lazy-require
          (prefix-in s: scribble/core)
          (prefix-in s: scribble/html-properties)
          (prefix-in s: scribble/latex-properties)
@@ -28,13 +27,15 @@
 
 ;; ============================================================
 
-(define (scribble-slides . pre-parts)
-  (scribble-slides* (s:decode pre-parts)))
+(define (scribble-slide-picts part)
+  (define slide-box (box null))
+  (scribble-slides/config (dummy-config% slide-box) part)
+  (reverse (unbox slide-box)))
 
-(define (scribble-slides* p)
-  (parameterize ((current-resolve-info (get-resolve-info (list p))))
-    (define renderer (new slide-parts-renderer%))
-    (send renderer render-part (current-sp-style) p)))
+(define (scribble-slides/config config% part)
+  (parameterize ((current-resolve-info (get-resolve-info (list part))))
+    (define renderer (new slide-parts-renderer% (config% config%)))
+    (send renderer render-part (current-sp-style) part)))
 
 ;; ------------------------------------------------------------
 
@@ -54,12 +55,13 @@
 
 (define slide-parts-renderer%
   (class parts-renderer%
+    (init-field config%)
     (inherit compose-page)
     (super-new (initial-default-layer initial-default-layer))
 
     (define/override (handle-part-blocks istyle sstyles title blocks st)
       (parameterize ((current-slide-config
-                      (new (get-slide-config%)
+                      (new config%
                            (title? #t)
                            (aspect (hash-ref sstyles 'aspect #f))
                            (layout (hash-ref sstyles 'layout #f)))))
@@ -69,19 +71,12 @@
       (define layout (hash-ref sstyles 'layout #f))
       (define aspect (hash-ref sstyles 'aspect #f))
       (define config
-        (new (get-slide-config%) (title? (and title-p #t))
+        (new config% (title? (and title-p #t))
              (aspect aspect) (layout layout)))
       (parameterize ((current-slide-config config))
         (define page (compose-page (send config fullpage) st layer=>picts))
         (send config slide/full title-p aspect page)))
     ))
-
-#;
-;; PRE: page has same dimensions as (get-full-page #:aspect #f).
-(define (slide/full #:title title-p #:aspect aspect page)
-  (slide #:title title-p #:layout 'tall #:aspect aspect
-         (let ([y (if title-p (- 0 title-h (current-gap-size)) 0)])
-           (inset page 0 y 0 0))))
 
 ;; ============================================================
 ;; Slide configs and zones
@@ -98,10 +93,15 @@
     titleh  ;; -> Real
     margin  ;; -> Real
     gap     ;; -> Real
+    screenw ;; Aspect -> Real
+    screenh ;; Aspect -> Real
+    fullpage ;; -> Pict
+    slide/full ;; Pict Aspect Pict -> Any
     ))
 
-(define dummy-slideshow-config%
+(define dummy-config-base%
   (class object%
+    (init-field slide-box)
     (super-new)
     (define margin 20)
     (define/public (clientw aspect) (- (screenw aspect) margin margin))
@@ -113,33 +113,22 @@
       (case aspect [(widescreen) 1360] [else 1024]))
     (define/public (screenh aspect)
       (case aspect [(widescreen) 766] [else 768]))
-    (define/public (fullpage aspect) (blank (clientw #f) (clienth #f)))
-    (define/public (emit-slide title aspect page) (void))
-    ))
+    (define/public (fullpage) (blank (clientw #f) (clienth #f)))
 
-(module+ slideshow
-  (require (only-in slideshow/base
-                    slide get-full-page
-                    title-h margin current-gap-size get-client-w get-client-h))
-  (provide get-slideshow-config%)
-  (define slideshow-config%
-    (class object%
-      (super-new)
-      (define/public (clientw aspect) (get-client-w #:aspect aspect))
-      (define/public (clienth aspect) (get-client-h #:aspect aspect))
-      (define/public (titleh) title-h)
-      (define/public (get-margin) margin)
-      (define/public (gap [n 1]) (* n (current-gap-size)))
-      (define/public (screenw aspect)
-        (+ (clientw aspect) margin margin))
-      (define/public (screenh aspect)
-        (+ (clienth aspect) margin margin))
-      (define/public (fullpage) (get-full-page #:aspect #f))
-      (define/public (emit-slide title aspect page)
-        (slide page #:title title #:aspect aspect #:layout 'tall))
-      ))
-  (define (get-slideshow-config%) slideshow-config%))
-(lazy-require [(submod "." slideshow) (get-slideshow-config%)])
+    (define/public (emit-slide title aspect page)
+      (define w (screenw aspect))
+      (define h (screenh aspect))
+      (define base (blank w h))
+      (define base+t
+        (cond [title
+               (let ([tw (pict-width title)] [th (pict-height title)])
+                 (pin-over base (* 1/2 (- w tw)) margin title))]
+              [else base]))
+      (define sp
+        (let ([pw (pict-width page)])
+          (pin-over base+t (* 1/2 (- w pw)) (+ margin (titleh) (gap)) page)))
+      (set-box! slide-box (cons sp (unbox slide-box))))
+    ))
 
 (define (slide-config-mixin base%)
   (class base%
@@ -193,12 +182,11 @@
         [else (error 'slide-zone "unknown slide-zone name: ~e" name)]))
     ))
 
-(define (get-slide-config%)
-  (define dummy-config% (slide-config-mixin dummy-slideshow-config%))
-  (define slideshow-config%-p (delay (slide-config-mixin (get-slideshow-config%))))
-  (if (module-declared? 'slideshow/base #f)
-      (force slideshow-config%-p)
-      dummy-config%))
+(define dummy-config%
+  (let ([config% (slide-config-mixin dummy-config-base%)])
+    (lambda (slide-box)
+      (class config%
+        (super-new (slide-box slide-box))))))
 
 (define current-slide-config (make-parameter #f))
 (define (get-slide-config who)
@@ -283,12 +271,48 @@
 
 ;; ============================================================
 
+(module+ slideshow
+  (require (only-in slideshow/base
+                    slide get-full-page
+                    title-h margin current-gap-size get-client-w get-client-h))
+  (provide slideshow-config%
+           scribble-slides
+           scribble-slides*)
+
+  (define slideshow-config%
+    (slide-config-mixin
+     (class object%
+       (super-new)
+       (define/public (clientw aspect) (get-client-w #:aspect aspect))
+       (define/public (clienth aspect) (get-client-h #:aspect aspect))
+       (define/public (titleh) title-h)
+       (define/public (get-margin) margin)
+       (define/public (gap [n 1]) (* n (current-gap-size)))
+       (define/public (screenw aspect)
+         (+ (clientw aspect) margin margin))
+       (define/public (screenh aspect)
+         (+ (clienth aspect) margin margin))
+       (define/public (fullpage) (get-full-page #:aspect #f))
+       (define/public (emit-slide title aspect page)
+         (slide page #:title title #:aspect aspect #:layout 'tall))
+       )))
+
+  (define (scribble-slides . pre-parts)
+    (scribble-slides* (s:decode pre-parts)))
+
+  (define (scribble-slides* part)
+    (scribble-slides/config slideshow-config% part)))
+
+;; ============================================================
+
 (module+ main
   (require ppict/slideshow2
-           (only-in slideshow/base slide get-full-page t titlet))
+           racket/lazy-require
+           (only-in slideshow/base slide get-full-page t titlet)
+           (submod ".." slideshow))
 
   (define (test-slide zname title)
-    (define config (new (get-slide-config%) (title? (and title #t)) (layout #f) (aspect #f)))
+    (define config (new slideshow-config% (title? (and title #t)) (layout #f) (aspect #f)))
     (parameterize ((current-slide-config config))
       (send config slide/full (and title (titlet title)) #f
             (ppict-do (frame (get-full-page #:aspect #f))
