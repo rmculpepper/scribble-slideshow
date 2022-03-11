@@ -206,31 +206,42 @@
        (define p (content->pict content (remove-block-styles istyle) width))
        (apply-block-styles istyle p))]
     [(s:compound-paragraph style blocks)
+     (define compact? #f)
      (let ([istyle (add-block-style style istyle)])
-       (append-blocks (get-line-sep istyle)
+       (append-blocks (if compact? (get-line-sep istyle) (get-block-sep istyle))
                       (for/list ([block (in-list blocks)])
                         (render-block block istyle))))]
     [(s:nested-flow style flow)
      (render-flow flow (add-block-style style istyle))]
     [(s:itemization style flows)
-     (define bullet (get-bullet istyle))
-     (define bullet-width (+ (pict-width bullet) 10))
-     (define sub-width (- (hash-ref istyle 'block-width +inf.0) bullet-width))
-     (let* ([istyle (add-block-style style istyle)]
-            [istyle (hash-set istyle 'block-width sub-width)])
-       (append-blocks (get-line-sep istyle)
-                      (for/list ([flow (in-list flows)])
-                        (htl-append 10 bullet (flow->pict flow istyle)))))]
+     (define compact? (eq? (s:style-name style) 'compact))
+     (define ordered? (eq? (s:style-name style) 'ordered))
+     (let ([istyle (add-block-style style istyle)])
+       (render-itemization compact? ordered? flows istyle))]
     [(s:table style blockss)
      (let ([istyle (hash-set istyle 'inset-to-width? #f)])
        (table->pict blockss (add-table-style style istyle)))]
     [(? s:traverse-block? block)
      (render-block (s:traverse-block-block block (current-resolve-info)) istyle)]
     [(? s:delayed-block? block)
-     (append-blocks (get-line-sep istyle)
+     (append-blocks (get-block-sep istyle)
                     (for/list ([b (in-list (s:delayed-block-blocks block (current-resolve-info)))])
                       (render-block b istyle)))]
     ))
+
+(define (render-itemization compact? ordered? flows istyle)
+  (define bullets (for/list ([index (in-naturals 1)] [flow (in-list flows)])
+                    (cond [ordered? (base-content->pict (format "~s." index) istyle)]
+                          [else (get-bullet istyle)])))
+  (define bullet-w (apply max 0 (map pict-width bullets)))
+  (define bullet-sep (get-bullet-sep istyle)) ;; FIXME!
+  (define sub-width (- (hash-ref istyle 'block-width +inf.0) bullet-w bullet-sep))
+  (let ([istyle (hash-set istyle 'block-width sub-width)])
+    (append-blocks (if compact? (get-line-sep istyle) (get-block-sep istyle))
+                   (for/list ([bullet (in-list bullets)] [flow (in-list flows)])
+                     (htl-append bullet-sep
+                                 (inset bullet (- bullet-w (pict-width bullet)) 0 0 0)
+                                 (flow->pict flow istyle))))))
 
 (define (table->pict cellss istyle)
   (define nrows (length cellss))
@@ -299,6 +310,10 @@
 (define (get-bullet istyle)
   (define text-size (hash-ref istyle 'text-size BASE-SIZE))
   (arrowhead (* 2/3 text-size) 0))
+
+(define (get-bullet-sep istyle)
+  (define text-size (hash-ref istyle 'text-size BASE-SIZE))
+  (* 1/2 text-size))
 
 (define (add-borders p borders)
   (define (has? sym) (or (memq sym borders) (memq 'all borders)))
