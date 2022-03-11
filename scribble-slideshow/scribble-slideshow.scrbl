@@ -5,21 +5,33 @@
                      (except-in pict table) pict/shadow
                      (only-in slideshow slide)))
 
+@(module stx racket/base
+   (require racket/string racket/port syntax/strip-context syntax/modread
+            (prefix-in s: scribble/reader))
+   (provide stx-strings->datums)
+   (define (stx-strings->datums ctx strs)
+     (with-module-reading-parameterization
+       (lambda ()
+         (define s (string-join (syntax->datum strs) ""))
+         (port->list (lambda (in) (replace-context ctx (s:read-syntax 'example in)))
+                     (open-input-string s))))))
+
 @(begin
-   (require (for-syntax racket/base racket/string racket/port
-                        syntax/strip-context (prefix-in s: scribble/reader)))
+   (require (for-syntax racket/base 'stx))
    (define-syntax (code-example stx)
      (syntax-case stx ()
        [(_ str ...)
-        (let ([str* (string-join (syntax->datum #'(str ...)) "")])
-          (define datums
-            (port->list (lambda (in) (s:read-syntax 'code-example in))
-                        (open-input-string str*)))
-          (with-syntax ([(datum ...) (map (lambda (d) (replace-context stx d)) datums)]
-                        [lang-line (syntax-local-introduce #'"#lang at-exp racket/base")])
-            #'(list (codeblock #:keep-lang-line? #f lang-line "\n" str ...)
-                    #;(para "produces:")
-                    (examples #:eval the-eval #:result-only #:label #f datum ...))))])))
+        (with-syntax ([(datum ...) (stx-strings->datums stx #'(str ...))]
+                      [lang-line (syntax-local-introduce #'"#lang at-exp racket/base")])
+          #'(list (codeblock #:keep-lang-line? #f lang-line "\n" str ...)
+                  (examples #:eval the-eval #:result-only #:label #f datum ...)))]))
+  (define-syntax (slides-example stx)
+     (syntax-case stx ()
+       [(_ str ...)
+        (with-syntax ([(datum ...) (stx-strings->datums stx #'(str ...))])
+          #'(list (codeblock #:keep-lang-line? #t str ...)
+                  (examples #:eval the-eval #:result-only #:label #f
+                            (mod->slide-picts 'datum ...))))])))
 
 @(define (s-tech . pc)
    (apply tech #:doc '(lib "scribblings/scribble/scribble.scrbl") pc))
@@ -33,6 +45,15 @@
 @(the-eval '(require scribble/base scribble/core scribble/manual
                      scribble-slideshow/pict
                      (except-in pict table) pict/shadow))
+
+@(the-eval
+  '(define (mod->slide-picts mod-decl)
+     (define mod (gensym))
+     (parameterize ((current-module-declare-name (make-resolved-module-path mod)))
+       (eval mod-decl))
+     (define doc (dynamic-require (list 'quote mod) 'doc))
+     (for/list ([sp (in-list (scribble-slide-picts doc))])
+       (frame (scale sp 1/4)))))
 
 @title[#:tag "scribble-slideshow"]{scribble-slideshow: Using Scribble to Make Slides}
 
@@ -116,6 +137,34 @@ This is another, with some @bold{interesting} @italic{elements.}
 
 @defproc[(scribble-slide-picts [part part?]) (listof pict?)]{
 
+
+@slides-example|{
+#lang scribble/manual
+
+@title{Fruits}
+
+@section{Apples}
+
+Apples can be
+@itemlist[
+@item{red, or}
+@item{yellow, or}
+@item{green.}
+]
+
+@section{Bananas}
+
+Bananas are yellow when ripe.
+
+@subsection[#:style 'alt]{..}
+
+Before that, they are green.
+
+@subsection[#:style 'next]{..}
+
+They turn black when overripe.
+
+}|
 
 }
 
