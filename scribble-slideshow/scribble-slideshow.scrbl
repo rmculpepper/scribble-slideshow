@@ -1,6 +1,7 @@
 #lang scribble/manual
 @(require scribble/example
-          (for-label racket/base racket/contract scribble-slideshow
+          (for-label racket/base racket/contract racket/draw
+                     scribble-slideshow/pict scribble-slideshow/slideshow
                      scribble/base scribble/core scribble/manual scribble/decode
                      (except-in pict table) pict/shadow
                      (only-in slideshow slide)))
@@ -57,12 +58,6 @@
 
 @title[#:tag "scribble-slideshow"]{scribble-slideshow: Using Scribble to Make Slides}
 
-@defmodule[scribble-slideshow #:lang]
-
-
-@; ============================================================
-@section{Introduction}
-
 This library provides both a @emph{language} and a @emph{library} for writing
 slideshows using Scribble notation. (To clarify, I don't mean just using the
 @racketmodname[at-exp] reader with @racketmodname[slideshow]. I mean that the
@@ -70,24 +65,43 @@ slides are written using Scribble forms, evaluated to Scribble document
 structures, and then rendered to slides and picts.) One benefit is that element
 styles cooperate automatically with line-breaking.
 
+The @racketmodname[scribble-slideshow] @emph{language} allows users to write
+Scribble documents that can automatically be run as slideshows.
+
 The @racketmodname[scribble-slideshow] @emph{library} provides functions like
 @racket[flow-pict] and @racket[scribble-slides] that convert Scribble
 @s-tech{pre-flow} into @p-tech{picts} and emit slides from Scribble
 @s-tech{parts}, respectively.
-
-The @racketmodname[scribble-slideshow] @emph{language} allows users to write
-Scribble documents that can automatically be run as slideshows. Like the
-@racketmodname[scribble/base] and @racketmodname[scribble/manual] languages, the
-contents of the module (minus requires, definitions, etc) are automatically
-gathered and interpreted as a Scribble document. The language emits a @tt{main}
-submodule that converts the Scribble document to slides.
 
 See the @hyperlink[(format "~a/scribble-slideshow/example" repo)]{scribble-slideshow/examples}
 directory for extended, runnable examples.
 
 
 @; ============================================================
+@section[#:tag "scribble-slide-lang"]{Scribble Language for Slideshows}
+
+@defmodule[scribble-slideshow #:lang]
+
+A language providing the bindings of @racketmodname[racket/base] and
+@racketmodname[scribble-slideshow], except that Racket's @racket[#%module-begin]
+form is replaced with a variant with the following behavior:
+@itemlist[
+
+@item{Like the @racketmodname[scribble/base] and @racketmodname[scribble/manual]
+languages, the contents of the module (minus requires, definitions, etc) are
+automatically gathered and interpreted as a Scribble document (a
+@s-tech{part}). The module defines and exports the name name @racketvarfont{doc}
+holding the document.}
+
+@item{The language emits a @tt{main} submodule that converts the Scribble
+document to slides.}
+]
+
+
+@; ============================================================
 @section[#:tag "scribble-slide"]{Scribble to Slides}
+
+@defmodule[scribble-slideshow/slideshow]
 
 @defproc[(scribble-slides [pre-part pre-part?] ...) void?]{
 
@@ -97,14 +111,6 @@ additional slide generated for each section, sub-section, etc.
 
 The style of each @racket[part] can be used to control a slide's layout and
 staging. See the extended examples for more details.
-}
-
-@defproc[(part/make-slides [proc (-> void?)]) part?]{
-
-Creates a @s-tech{part} wrapping a procedure. The procedure is run for
-effect when the part is processed by @racket[scribble-slides] or its
-equivalent; it should call @racket[slide] or similar functions to emit
-slides for that part of the document.
 }
 
 
@@ -168,10 +174,80 @@ They turn black when overripe.
 
 }
 
+@defproc[(part/make-slides [proc (-> void?)]) part?]{
+
+Creates a @s-tech{part} wrapping a procedure. The procedure is run for
+effect when the part is processed by @racket[scribble-slides] or its
+equivalent; it should call @racket[slide] or similar functions to emit
+slides for that part of the document.
+}
+
 
 @; ------------------------------------------------------------
 @subsection[#:tag "style"]{Styles}
 
+The translation from Scribble structures to picts is controlled by the current
+@deftech{sp-style} (Scribble to Pict style), which is represented by an
+immutable hash with symbol keys.
+
+The following keys are relevant to the translation of Scribble @s-tech{content}:
+@itemlist[
+
+@item{@racket['text-base], @racket['text-mods] --- These are combined to get the
+style argument of @racket[text].}
+
+@item{@racket['text-size] --- An integer between 1 and 1024. See @racket[text].}
+
+@item{@racket['white-space] --- One of the following: @racket[#f] (normal
+breaking and collapsing), @racket['pre] (no break, no collapse),
+@racket['pre-wrap] (break, no collapse), @racket['nowrap] (collapse, no break).}
+
+@item{@racket['color] --- A string or @racket[color%]. Used to @racket[colorize]
+each pict produced by Scribble @s-tech{content}.}
+
+@item{@racket['scale] --- A real number used to @racket[scale] each pict
+produced to represent Scribble @s-tech{content}.}
+
+@item{@racket['text-post] --- A list of pict-to-pict transformers, applied in
+order to each pict produced to represent Scribble text.}
+
+@item{@racket['elem-post] --- A list of pict-to-pict transformers, applied in
+order to each pict produced to represent any Scribble @s-tech{content}.}
+
+@item{@racket['bgcolor] --- A string or @racket[color%].}
+
+]
+
+The following keys are relevant to the translation of Scribble @s-tech{blocks}
+and @s-tech{flow}:
+@itemlist[
+
+@item{@racket['block-width] --- A positive real.}
+
+@item{@racket['block-border] --- A list of symbols in @racket['all],
+@racket['left], @racket['right], @racket['top], @racket['bottom].}
+
+@item{@racket['bgcolor] --- @racket[#f] or a string or @racket[color%].}
+
+@;{Not described: inset-to-width?, block-halign, block-inset}
+
+@item{@racket['block-sep] --- A nonnegative real, used for the spacing between
+blocks.}
+
+@item{@racket['line-sep] --- A nonnegative real, used for the spacing between
+lines in a paragraph and between @s-tech{items} in a @racket['compact]
+@s-tech{itemization}.}
+
+]
+
+The following keys are relevant to the translation of Scribble @s-tech{parts}:
+@itemlist[
+
+@item{@racket['slide-title-base], @racket['slide-title-size],
+@racket['slide-title-color] --- Like @racket['text-base], @racket['text-size],
+and @racket['color], but applied to the slide title.}
+
+]
 
 
 @defthing[current-sp-style parameter?]{
