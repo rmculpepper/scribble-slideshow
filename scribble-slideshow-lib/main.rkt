@@ -2,12 +2,8 @@
 ;; Licensed under the Apache 2.0 license. See LICENSE.
 
 #lang racket/base
-(require "pict.rkt"
-         "private/slide.rkt"
-         (submod "private/slide.rkt" slideshow))
-(provide (all-from-out "pict.rkt")
-         scribble-slides
-         scribble-slides*)
+(require "pict.rkt")
+(provide (all-from-out "pict.rkt"))
 
 ;; ----------------------------------------
 ;; Language
@@ -23,7 +19,7 @@
     (scribble-module-begin
      id post-process ()
      (module* main racket/base ;; module+ does not seem to work ...
-       (require scribble-slideshow
+       (require scribble-slideshow/slideshow
                 (only-in (submod "..") [id id]))
        (scribble-slides* id))
      . body))
