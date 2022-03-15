@@ -14,6 +14,7 @@
 
 #lang at-exp racket/base
 (require scribble-slideshow
+         scribble-slideshow/slideshow
          (prefix-in p: pict)            ;; avoid collisions; eg table
          (only-in slideshow/base slide) ;; avoid collisions; eg para, item, ...
          pict/shadow
