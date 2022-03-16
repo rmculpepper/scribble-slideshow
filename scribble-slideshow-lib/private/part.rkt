@@ -246,16 +246,7 @@
 
 ;; FIXME: move to single 'title-styles key?
 (define (get-title-istyle istyle)
-  (remove-slide-styles
-   (remove-block-styles
-    (hash-update* istyle
-                  'color (lambda (v) (hash-ref istyle 'slide-title-color v))
-                  'text-size (lambda (v) (hash-ref istyle 'slide-title-size v))
-                  'text-base (lambda (v) (hash-ref istyle 'slide-title-base v))))))
-
-(define (remove-slide-styles istyle)
-  (define keys '(slide-title-color slide-title-size slide-title-base))
-  (hash-remove* istyle keys))
+  (add-style 'slide-title istyle))
 
 ;; ----------------------------------------
 

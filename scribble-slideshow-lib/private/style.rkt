@@ -4,6 +4,7 @@
 #lang racket/base
 (require racket/match
          racket/list
+         racket/hash
          (prefix-in s: scribble/core)
          (prefix-in s: scribble/html-properties)
          (prefix-in s: scribble/latex-properties)
@@ -67,9 +68,6 @@
 
 (define wide-istyle (hash-set base-istyle 'block-width WIDE-BLOCK-WIDTH))
 
-(define current-sp-style (make-parameter base-istyle))
-(define current-istyle current-sp-style)
-
 ;; Style properties
 (struct text-post-property (post))
 (struct elem-post-property (post))
@@ -108,58 +106,87 @@
 (define (add-style s istyle #:no-warn [no-warn null])
   (match s
     [(s:style name props)
-     (for/fold ([istyle (add-style name istyle #:no-warn no-warn)])
-               ([prop (in-list props)])
-       (add-style-prop prop istyle no-warn))]
+     (let ([istyle (add-simple-style name istyle no-warn)])
+       (for/fold ([istyle istyle])
+                 ([prop (in-list props)])
+         (add-style-prop prop istyle no-warn)))]
     [s (add-simple-style s istyle no-warn)]))
 
 (define (add-simple-style s istyle [no-warn null])
-  (case s
-    [(italic bold subscript superscript #||# combine no-combine aligned unaligned)
-     (hash-cons istyle 'text-mods s)]
-    [(emph)
-     (let ([b (hash-ref istyle 'text-mods null)])
-       (hash-set istyle 'text-mods (if (memq 'italic b) (remq 'italic b) (cons 'italic b))))]
-    [(tt) (hash-set istyle 'text-base 'modern)]
-    [(sf) (hash-set istyle 'text-base 'swiss)]
-    [(roman) (hash-set istyle 'text-base s)]
-    [(larger) (hash-set istyle 'scale (* 3/2 (hash-ref istyle 'scale 1)))]
-    [(smaller) (hash-set istyle 'scale (* 2/3 (hash-ref istyle 'scale 1)))]
-    [("RktBlk") (hash-set* istyle 'text-base 'modern 'white-space 'pre)]
-    [("RktCmt") (hash-set* istyle 'text-base 'modern 'color '(#xC2 #x74 #x1F))]
-    [("RktErr") (hash-set* (hash-cons istyle 'text-mods 'italic)
-                           'text-base 'modern 'color "red")]
-    [("RktIn") (hash-set* istyle 'text-base 'modern 'color '(#xCC #x66 #x33))]
-    [("RktKw") (hash-set* istyle 'text-base 'modern 'color "black")]
-    [("RktMeta") (hash-set* istyle 'text-base 'modern 'color "black")]
-    [("RktMod") (hash-set* istyle 'text-base 'modern)]
-    [("RktOut") (hash-set* istyle 'text-base 'modern 'color '(#x96 #x00 #x96))]
-    [("RktOpt") (hash-set* (hash-cons istyle 'text-mods 'italic) 'color "black")]
-    [("RktPn") (hash-set* istyle 'text-base 'modern 'color '(#x84 #x3C #x24))]
-    [("RktRes") (hash-set* istyle 'text-base 'modern 'color '(#x00 #x00 #xAF))]
-    [("RktRdr") (hash-set* istyle 'text-base 'modern)]
-    [("RktSym") (hash-set* istyle 'text-base 'modern
-                           ;; Scribble renders in black, but DrRacket in dark blue.
-                           ;; I think dark blue is a better contrast with slide text.
-                           'color '(#x00 #x00 #x80))]
-    [("RktVar") (hash-set* (hash-cons istyle 'text-mods 'italic)
-                           'text-base 'modern 'color '(#x44 #x44 #x44))]
-    [("RktVal") (hash-set* istyle 'text-base 'modern 'color '(#x22 #x8B #x22))]
-    [("RktInBG") (hash-set istyle 'bgcolor "lightgray")]
-    [("RktStxDef" "RktSymDef" "RktValDef")
-     (hash-set* istyle 'text-base 'modern 'color "black" 'text-mods '(bold))]
-    [("RktValLink" "RktStxLink" "RktModLink")
-     (hash-set* istyle 'color '(#x00 #x77 #xAA))]
-    [("defmodule") (hash-set istyle 'bgcolor '(#xEB #xF0 #xF4))]
-    [("highlighted") (hash-set istyle 'bgcolor '(#xFF #xEE #xEE))]
-    [("Rfiletitle") (hash-set istyle 'bgcolor '(#xEE #xEE #xEE))]
-    [("SCentered") (hash-set istyle 'block-halign 'center)]
-    [(hspace) (hash-set* istyle 'text-base 'modern 'white-space 'pre)]
-    [(#f) istyle]
-    [else
-     (unless (member s no-warn)
-       (log-scribble-slideshow-warning "add-style: ignoring: ~e" s))
-     istyle]))
+  (define stylemap (hash-ref istyle 'styles '#hasheq()))
+  (cond [(hash-ref stylemap s #f)
+         => (lambda (update) (apply-update 'add-style update istyle))]
+        [else
+         (unless (member s no-warn)
+           (log-scribble-slideshow-warning "add-style: ignoring: ~e" s))
+         istyle]))
+
+(define (apply-update who update istyle)
+  (cond [(list? update)
+         (unless (even? (length update))
+           (error who "list length is not even: ~e" update))
+         (apply hash-set* istyle update)]
+        [(hash? update) (merge-styles istyle update)]
+        [(procedure? update) (update istyle)]
+        [else (error who "bad style update: ~e" update)]))
+
+;; ----------------------------------------
+
+(define ((updater key default f) istyle)
+  (hash-set istyle key (f (hash-ref istyle key default))))
+(define ((updates . args) istyle) (apply hash-set* istyle args))
+(define ((comp f g) x) (g (f x)))
+(define ((iconser x) xs) (if (memq x xs) xs (cons x xs)))
+(define ((toggler x) xs) (if (memq x xs) (remq x xs) (cons x xs)))
+
+(define initial-stylemap
+  (hash-union
+   ;; Standard Scribble style names
+   (hash
+    'emph (updater 'text-mods null (toggler 'italic))
+    'tt '(text-base modern)
+    'sf '(text-base swiss)
+    'roman '(text-base roman)
+    'larger (updater 'scale 1 (lambda (v) (* 3/2 v)))
+    'smaller (updater 'scale 1 (lambda (v) (* 2/3 v)))
+    "RktBlk" '(text-base modern white-space pre)
+    "RktCmt" '(text-base modern color (#xC2 #x74 #x1F))
+    "RktErr" (comp (updater 'text-mods null (iconser 'italic))
+                   (updates 'text-base 'modern 'color "red"))
+    "RktIn" '(text-base modern color (#xCC #x66 #x33))
+    "RktKw" '(text-base modern color "black")
+    "RktMeta" '(text-base modern color "black")
+    "RktMod" '(text-base modern)
+    "RktOut" '(text-base modern color (#x96 #x00 #x96))
+    "RktOpt" (comp (updater 'text-mods null (iconser 'italic))
+                   (updates 'color "black"))
+    "RktPn" '(text-base modern color (#x84 #x3C #x24))
+    "RktRes" '(text-base modern color (#x00 #x00 #xAF))
+    "RktRdr" '(text-base modern)
+    "RktSym" (list 'text-base 'modern
+                   ;; Scribble renders in black, but DrRacket in dark blue.
+                   ;; I think dark blue is a better contrast with slide text.
+                   'color '(#x00 #x00 #x80))
+    "RktVar" (comp (updater 'text-mods null (iconser 'italic))
+                   (updates 'text-base 'modern 'color '(#x44 #x44 #x44)))
+    "RktVal" '(text-base modern color (#x22 #x8B #x22))
+    "RktInBG" '(bgcolor "lightgray")
+    "defmodule" '(bgcolor (#xEB #xF0 #xF4))
+    "highlighted" '(bgcolor (#xFF #xEE #xEE))
+    "Rfiletitle" '(bgcolor (#xEE #xEE #xEE))
+    "SCentered" '(block-halign center)
+    'hspace '(text-base modern white-space pre))
+   (let ([mods '(italic bold subscript superscript combine no-combine align unaligned)])
+     (for/hash ([s (in-list mods)])
+       (values s (updater 'text-mods null (iconser s)))))
+   (for/hash ([s (in-list '("RktStxDef" "RktSymDef" "RktValDef"))])
+     (values s '(text-base modern color "black" text-mods (bold))))
+   (for/hash ([s (in-list '("RktValLink" "RktStxLink" "RktModLink"))])
+     (values s '(color (#x00 #x77 #xAA))))
+   ;; ----
+   (hash
+    'slide-title (list 'text-base TITLE-BASE 'text-size TITLE-SIZE 'color TITLE-COLOR))
+   ))
 
 (define (add-style-prop prop istyle [no-warn null])
   (match prop
@@ -167,15 +194,14 @@
      (hash-cons istyle 'text-post post)]
     [(elem-post-property post)
      (hash-cons istyle 'elem-post post)]
-    [(? hash?)
-     (for/fold ([istyle istyle]) ([(k v) (in-hash prop)]) (hash-set istyle k v))]
+    [(? hash?) (merge-styles istyle prop)]
     [(s:color-property color)
      (hash-set istyle 'color (to-color color))]
     [(s:background-color-property color)
      (hash-set istyle 'bgcolor (to-color color))]
     [(? s:css-addition?) istyle]
     [(? s:tex-addition?) istyle]
-    [(style-transformer f) (f istyle)]
+    [(style-transformer f) (apply-update 'style-transformer f istyle)]
     ['tt-chars istyle]
     [(or 'omitable 'never-indents 'decorative) istyle] ;; FIXME?
     [_
@@ -189,3 +215,10 @@
 
 (define (bg-colorize p c)
   (pin-under p 0 0 (filled-rectangle (pict-width p) (pict-height p) #:draw-border? #f #:color c)))
+
+;; ------------------------------------------------------------
+
+(define current-sp-style
+  (make-parameter (hash-set base-istyle 'styles initial-stylemap)))
+
+(define current-istyle current-sp-style)
