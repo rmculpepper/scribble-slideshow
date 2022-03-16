@@ -103,21 +103,28 @@
 ;; - 'text-post : (Listof (Pict -> Pict))
 ;; - 'elem-post : (Listof (Pict -> Pict))
 
-(define (add-style s istyle #:no-warn [no-warn null])
+(define (add-style s istyle #:ignore-names [ignore-names null] #:ignore-props [ignore-props null])
+  (define-values (istyle* props*)
+    (add-style* s istyle #:ignore-names ignore-names #:ignore-props ignore-props))
+  istyle*)
+
+(define (add-style* s istyle #:ignore-names [ignore-names null] #:ignore-props [ignore-props null])
   (match s
     [(s:style name props)
-     (let ([istyle (add-simple-style name istyle no-warn)])
-       (for/fold ([istyle istyle])
+     (let ([istyle (add-simple-style name istyle ignore-names)])
+       (for/fold ([istyle istyle] [rprops null] #:result (values istyle (reverse rprops)))
                  ([prop (in-list props)])
-         (add-style-prop prop istyle no-warn)))]
-    [s (add-simple-style s istyle no-warn)]))
+         (define-values (used? istyle*) (add-style-prop prop istyle ignore-props))
+         (values istyle* (if used? rprops (cons prop rprops)))))]
+    [s (values (add-simple-style s istyle ignore-names) null)]))
 
-(define (add-simple-style s istyle [no-warn null])
+(define (add-simple-style s istyle [ignore-names null])
   (define stylemap (hash-ref istyle 'styles '#hasheq()))
-  (cond [(hash-ref stylemap s #f)
+  (cond [(eq? s #f) istyle]
+        [(hash-ref stylemap s #f)
          => (lambda (update) (apply-update 'add-style update istyle))]
         [else
-         (unless (member s no-warn)
+         (unless (member s ignore-names)
            (log-scribble-slideshow-warning "add-style: ignoring: ~e" s))
          istyle]))
 
@@ -141,7 +148,10 @@
 
 (define initial-stylemap
   (hash-union
+   ;; ----------------------------------------
    ;; Standard Scribble style names
+
+   ;; Content styles:
    (hash
     'emph (updater 'text-mods null (toggler 'italic))
     'tt '(text-base modern)
@@ -175,6 +185,7 @@
     "highlighted" '(bgcolor (#xFF #xEE #xEE))
     "Rfiletitle" '(bgcolor (#xEE #xEE #xEE))
     "SCentered" '(block-halign center)
+    'no-break '(white-space nowrap)
     'hspace '(text-base modern white-space pre))
    (let ([mods '(italic bold subscript superscript combine no-combine align unaligned)])
      (for/hash ([s (in-list mods)])
@@ -183,31 +194,66 @@
      (values s '(text-base modern color "black" text-mods (bold))))
    (for/hash ([s (in-list '("RktValLink" "RktStxLink" "RktModLink"))])
      (values s '(color (#x00 #x77 #xAA))))
-   ;; ----
+
+   ;; Block styles:
+   (hash
+    ;; paragraph:
+    'author '()
+    'pretitle '()
+    'wraps '()
+
+    ;; table:
+    'boxed '(bgcolor "aliceblue" block-border (top) inset-to-width? #t)
+    ;;     tables generally disable inset-to-width?, but a boxed table restores it
+    'centered '() ;; ????
+    'block ()
+
+    ;; itemization:
+    'compact '()
+    'ordered '()
+
+    ;; nested-flow:
+    'inset '() ;; ignore
+    'code-inset '(block-inset code) ;; FIXME: reduce width?
+    'vertical-inset '(block-inset vertical)
+    "refpara" '(block-halign right scale 3/4) ;; for margin-par
+
+    ;; ie, "procedure", "syntax", etc in defproc, defform, etc
+    "RBackgroundLabel" (list 'block-halign float-right 'inset-to-width? #f
+                             'text-base modern 'color "darkgray" 'scale 2/3)
+
+    )
+
+   ;; Part styles:
+   (hash
+    'index '())
+   ;; ----------------------------------------
+   ;; Custom style names
    (hash
     'slide-title (list 'text-base TITLE-BASE 'text-size TITLE-SIZE 'color TITLE-COLOR))
    ))
 
-(define (add-style-prop prop istyle [no-warn null])
+(define (add-style-prop prop istyle [ignore-props null])
+  (define (used v) (values #t v))
   (match prop
     [(text-post-property post)
-     (hash-cons istyle 'text-post post)]
+     (used (hash-cons istyle 'text-post post))]
     [(elem-post-property post)
-     (hash-cons istyle 'elem-post post)]
-    [(? hash?) (merge-styles istyle prop)]
+     (used (hash-cons istyle 'elem-post post))]
     [(s:color-property color)
-     (hash-set istyle 'color (to-color color))]
+     (used (hash-set istyle 'color (to-color color)))]
     [(s:background-color-property color)
-     (hash-set istyle 'bgcolor (to-color color))]
-    [(? s:css-addition?) istyle]
-    [(? s:tex-addition?) istyle]
-    [(style-transformer f) (apply-update 'style-transformer f istyle)]
-    ['tt-chars istyle]
-    [(or 'omitable 'never-indents 'decorative) istyle] ;; FIXME?
-    [_
-     (unless (member prop no-warn)
-       (log-scribble-slideshow-warning "add-style-prop: ignoring: ~e" prop))
-     istyle]))
+     (used (hash-set istyle 'bgcolor (to-color color)))]
+    [(? hash?) (used (merge-styles istyle prop))]
+    [(? s:css-addition?) (used istyle)]
+    [(? s:tex-addition?) (used istyle)]
+    [(style-transformer f) (used (apply-update 'style-transformer f istyle))]
+    ;; ignore 'tt-chars, 'omitable, 'never-indents, 'decorative ???
+    [(? (lambda (v) (member prop ignore-props)))
+     (values #t istyle)]
+    [_ (begin (unless (or (symbol? prop) (string? prop))
+                (log-scribble-slideshow-warning "add-style-prop: ignoring: ~e" prop))
+              (values #f istyle))]))
 
 ;; ------------------------------------------------------------
 

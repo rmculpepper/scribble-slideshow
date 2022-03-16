@@ -30,23 +30,38 @@
 ;; - (cons (U #f Pict) Pict)
 
 (define (add-block-style s istyle)
+  (define-values (istyle* props*) (add-block-style* s istyle))
+  istyle*)
+
+(define (add-block-style* s istyle)
+  (add-style* s istyle
+              #:ignore-names '(;; paragraph
+                               author pretitle wraps
+                               ;; table
+                               boxed centered block
+                               ;; itemization
+                               compact ordered
+                               ;; nested-flow
+                               inset code-inset vertical-inset
+                               ;; compound-paragraph (none)
+                               )
+              #:ignore-props '(;; paragraph
+                               omitable div never-indents
+                               ;; table
+                               aux never-indents
+                               ;; itemization
+                               never-indents
+                               ;; nested-flow
+                               command multicommand never-indents decorative pretitle
+                               ;; compound-paragraph
+                               command never-indents
+                               )))
+
+
+(define (add-block-style s istyle)
   (match s
     [(s:style name props)
      (foldl add-block-style-prop (add-block-style name istyle) props)]
-    ;; ----
-    ;; Special case: tables generally disable inset-to-width?, but a boxed table restores it.
-    ['boxed (hash-set* istyle 'bgcolor "aliceblue" 'block-border '(top) 'inset-to-width? #t)]
-    ;; ----
-    ['vertical-inset (hash-set* istyle 'block-inset 'vertical)]
-    ['code-inset (hash-set* istyle 'block-inset 'code)] ;; FIXME: reduce width?
-    ["RBackgroundLabel" ;; ie, "procedure", "syntax" etc in defproc, defform, etc
-     (hash-set* istyle 'block-halign 'float-right 'inset-to-width? #f
-                'text-base 'modern 'color "darkgray" 'scale 2/3)]
-    ["refpara" ;; style on nested-flow for margin-par
-     (hash-set* istyle 'block-halign 'right 'scale 3/4)]
-    ["SCentered" (hash-set istyle 'block-halign 'center)]
-    ;; ----
-    [#f istyle]
     [_
      (log-scribble-slideshow-warning "add-block-style: ignoring: ~e" s)
      istyle]))
