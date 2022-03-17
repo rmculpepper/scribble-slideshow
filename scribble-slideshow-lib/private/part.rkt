@@ -115,14 +115,12 @@
       (match-define (part _ _ title0 style _ blocks parts) p)
       (define-values (istyle* props*) (add-style* style istyle))
       (define sstyles (add-slide-props props* (hash-ref istyle 'slide-styles (hasheq))))
-      ;;(define sstyles (add-slide-styles style (hash-ref istyle 'slide-styles (hasheq))))
-      ;;(define istyle* (add-style style istyle))
       (case (hash-ref sstyles 'ignore #f)
         [(ignore*)
          (values in-st (lambda (post) post))]
         [else
          (define slide-mode (hash-ref sstyles 'mode #f))
-         (define maker (or (hash-ref sstyles 'maker #f) void))
+         (define maker (wrap-maker istyle* (or (hash-ref sstyles 'maker #f) void)))
          (define title (if (hash-ref sstyles 'no-title #f) #f title0))
          (define-values (final-st ptx)
            (handle-part* istyle* sstyles title blocks parts (get-start-state slide-mode in-st)))
@@ -205,6 +203,9 @@
                 => (lambda (in-layer) (loop h blocks in-layer))]
                [else (hash-cons h layer b)])]
         [b (hash-cons h layer b)]))))
+
+(define ((wrap-maker istyle maker))
+  (parameterize ((current-istyle istyle)) (maker)))
 
 ;; ------------------------------------------------------------
 
