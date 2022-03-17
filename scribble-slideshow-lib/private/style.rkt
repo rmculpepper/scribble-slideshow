@@ -51,12 +51,7 @@
 ;; affect other picts) or scale?
 
 (define base-istyle
-  `#hasheq(;; Slide styles
-           (slide-title-color . ,TITLE-COLOR)
-           (slide-title-size  . ,TITLE-SIZE)
-           (slide-title-base  . ,TITLE-BASE)
-
-           ;; Block Styles
+  `#hasheq(;; Block Styles
            (inset-to-width? . #t)
            (block-width     . ,BLOCK-WIDTH)
            (block-sep       . ,BLOCK-SEP)
@@ -103,28 +98,30 @@
 ;; - 'text-post : (Listof (Pict -> Pict))
 ;; - 'elem-post : (Listof (Pict -> Pict))
 
-(define (add-style s istyle #:ignore-names [ignore-names null] #:ignore-props [ignore-props null])
+(define (add-style s istyle #:ignore-props [ignore-props null])
   (define-values (istyle* props*)
-    (add-style* s istyle #:ignore-names ignore-names #:ignore-props ignore-props))
+    (add-style* s istyle #:ignore-props ignore-props))
   istyle*)
 
-(define (add-style* s istyle #:ignore-names [ignore-names null] #:ignore-props [ignore-props null])
+(define (add-style* s istyle #:ignore-props [ignore-props null])
   (match s
     [(s:style name props)
-     (let ([istyle (add-simple-style name istyle ignore-names)])
+     (let ([istyle (add-simple-style name istyle)])
        (for/fold ([istyle istyle] [rprops null] #:result (values istyle (reverse rprops)))
                  ([prop (in-list props)])
          (define-values (used? istyle*) (add-style-prop prop istyle ignore-props))
          (values istyle* (if used? rprops (cons prop rprops)))))]
-    [s (values (add-simple-style s istyle ignore-names) null)]))
+    [s (values (add-simple-style s istyle) null)]))
 
-(define (add-simple-style s istyle [ignore-names null])
+(define ignore-style-names null)
+
+(define (add-simple-style s istyle)
   (define stylemap (hash-ref istyle 'styles '#hasheq()))
   (cond [(eq? s #f) istyle]
         [(hash-ref stylemap s #f)
          => (lambda (update) (apply-update 'add-style update istyle))]
         [else
-         (unless (member s ignore-names)
+         (unless (member s ignore-style-names)
            (log-scribble-slideshow-warning "add-style: ignoring: ~e" s))
          istyle]))
 
@@ -205,11 +202,11 @@
     ;; table:
     'boxed '(bgcolor "aliceblue" block-border (top) inset-to-width? #t)
     ;;     tables generally disable inset-to-width?, but a boxed table restores it
-    'centered '() ;; ????
-    'block ()
+    'centered '(block-halign center) ;; ????
+    'block '()
 
     ;; itemization:
-    'compact '()
+    'compact (lambda (istyle) (hash-set istyle 'block-sep (get-line-sep istyle))) ;; generalized!
     'ordered '()
 
     ;; nested-flow:
@@ -219,8 +216,8 @@
     "refpara" '(block-halign right scale 3/4) ;; for margin-par
 
     ;; ie, "procedure", "syntax", etc in defproc, defform, etc
-    "RBackgroundLabel" (list 'block-halign float-right 'inset-to-width? #f
-                             'text-base modern 'color "darkgray" 'scale 2/3)
+    "RBackgroundLabel" (list 'block-halign 'float-right 'inset-to-width? #f
+                             'text-base 'modern 'color "darkgray" 'scale 2/3)
 
     )
 
@@ -235,6 +232,7 @@
 
 (define (add-style-prop prop istyle [ignore-props null])
   (define (used v) (values #t v))
+  (define (ignore? v) (member v ignore-props))
   (match prop
     [(text-post-property post)
      (used (hash-cons istyle 'text-post post))]
@@ -249,11 +247,10 @@
     [(? s:tex-addition?) (used istyle)]
     [(style-transformer f) (used (apply-update 'style-transformer f istyle))]
     ;; ignore 'tt-chars, 'omitable, 'never-indents, 'decorative ???
-    [(? (lambda (v) (member prop ignore-props)))
-     (values #t istyle)]
-    [_ (begin (unless (or (symbol? prop) (string? prop))
-                (log-scribble-slideshow-warning "add-style-prop: ignoring: ~e" prop))
-              (values #f istyle))]))
+    [(? ignore?) (values #t istyle)]
+    [_
+     (when #f (log-scribble-slideshow-warning "add-style-prop: ignoring: ~e" prop))
+     (values #f istyle)]))
 
 ;; ------------------------------------------------------------
 
