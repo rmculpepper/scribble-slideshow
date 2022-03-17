@@ -57,8 +57,9 @@
        (frame (scale sp 1/4)))))
 
 @title[#:tag "scribble-slideshow"]{scribble-slideshow: Using Scribble to Make Slides}
+@author[@author+email["Ryan Culpepper" "ryanc@racket-lang.org"]]
 
-This library provides both a @emph{language} and a @emph{library} for writing
+This package provides both a @emph{language} and a @emph{library} for writing
 slideshows using Scribble notation. (To clarify, I don't mean just using the
 @racketmodname[at-exp] reader with @racketmodname[slideshow]. I mean that the
 slides are written using Scribble forms, evaluated to Scribble document
@@ -90,11 +91,14 @@ form is replaced with a variant with the following behavior:
 @item{Like the @racketmodname[scribble/base] and @racketmodname[scribble/manual]
 languages, the contents of the module (minus requires, definitions, etc) are
 automatically gathered and interpreted as a Scribble document (a
-@s-tech{part}). The module defines and exports the name name @racketvarfont{doc}
+@s-tech{part}). The module defines and exports the name @racketvarfont{doc}
 holding the document.}
 
 @item{The language emits a @tt{main} submodule that converts the Scribble
-document to slides.}
+document to slides and presents them as a slideshow.  The @tt{main} submodule
+depends on @racketmodname[scribble-slideshow/slideshow] and the Racket GUI
+library, but the enclosing module does not.}
+
 ]
 
 
@@ -103,6 +107,9 @@ document to slides.}
 
 @defmodule[scribble-slideshow/slideshow]
 
+The exports of @racketmodname[scribble-slideshow/slideshow] are @emph{not}
+provided by @racketmodname[scribble-slideshow].
+
 @defproc[(scribble-slides [pre-part pre-part?] ...) void?]{
 
 Decodes the @racket[pre-part]s to a Scribble @s-tech{part} (see @racket[decode])
@@ -110,7 +117,12 @@ and generates slides from its content and sub-parts. That is, there is an
 additional slide generated for each section, sub-section, etc.
 
 The style of each @racket[part] can be used to control a slide's layout and
-staging. See the extended examples for more details.
+staging. See @secref["style"], and see the extended examples for more details.
+}
+
+@defproc[(scribble-slides* [part part?]) void?]{
+
+Generates slides from the content and sub-parts of @racket[part].
 }
 
 
@@ -143,11 +155,16 @@ This is another, with some @bold{interesting} @italic{elements.}
 
 @defproc[(scribble-slide-picts [part part?]) (listof pict?)]{
 
+Like @racket[scribble-slides*], but returns a list of picts instead of
+presenting them as slides.
+
+Since this procedure does not depend on @racketmodname[slideshow], it is not
+affected by changes to slideshow configuration like the margin and title height.
 
 @slides-example|{
 #lang scribble/manual
 
-@title{Fruits}
+@title[#:style 'ignore]{Fruits}
 
 @section{Apples}
 
@@ -190,6 +207,16 @@ The translation from Scribble structures to picts is controlled by the current
 @deftech{sp-style} (Scribble to Pict style), which is represented by an
 immutable hash with symbol keys.
 
+@defthing[current-sp-style parameter?]{
+
+@bold{Deprecated.} Use a @racket[style-transformer] in the style of the root
+@s-tech{part} of the Scribble document to set the initial styles instead.
+}
+
+
+@; ----------------------------------------
+@subsection[#:tag "content-style"]{Translation of Scribble Content}
+
 The following keys are relevant to the translation of Scribble @s-tech{content}:
 @itemlist[
 
@@ -218,11 +245,15 @@ order to each pict produced to represent any Scribble @s-tech{content}.}
 
 ]
 
+
+@; ----------------------------------------
+@subsection[#:tag "block-style"]{Translation of Scribble Flow}
+
 The following keys are relevant to the translation of Scribble @s-tech{blocks}
 and @s-tech{flow}:
 @itemlist[
 
-@item{@racket['block-width] --- A positive real.}
+@item{@racket['block-width] --- A positive real, may be @racket[+inf.0].}
 
 @item{@racket['block-border] --- A list of symbols in @racket['all],
 @racket['left], @racket['right], @racket['top], @racket['bottom].}
@@ -240,29 +271,45 @@ lines in a paragraph and between items in a @racket['compact]
 
 ]
 
-The following keys are relevant to the translation of Scribble @s-tech{parts}:
+@; ----------------------------------------
+@subsection[#:tag "part-style"]{Translation of Scribble Parts}
+
+
+@; ----------------------------------------
+@subsection[#:tag "style-style"]{Translation of Scribble Styles}
+
+The following keys are relevant to the translation of Scribble @s-tech{styles}:
 @itemlist[
 
-@item{@racket['slide-title-base], @racket['slide-title-size],
-@racket['slide-title-color] --- Like @racket['text-base], @racket['text-size],
-and @racket['color], but applied to the slide title.}
+@item{@racket['styles] --- A hash mapping Scribble @s-tech{style names} to
+@tech{sp-style updates}. See @racket[style-transformer] for a discussion of
+@tech{sp-style updates}.}
 
 ]
 
-
-@defthing[current-sp-style parameter?]{
-
-@bold{Deprecated.} Use a @racket[style-transformer] in the style of the root
-@s-tech{part} of the Scribble document to set the initial styles instead.
-}
-
-@defproc[(style-transformer [update (-> hash? hash?)]) any/c]{
-
-Returns an opaque value suitable as a Scribble @(styleprop). 
-
-}
-
 @(define (styleprop) (s-tech "style property"))
+
+@defproc[(style-transformer [update @#,tech{sp-style update}]) any/c]{
+
+Returns an opaque value suitable as a Scribble @(styleprop). When the style
+property is applied to a Scribble structure, it updates the current
+@tech{sp-style} used for that process that part of the document.
+
+An @deftech{sp-style update} is one of the following:
+@itemlist[
+
+@item{@racket[(-> hash? hash?)] --- A procedure that takes the current
+@tech{sp-style} and returns a new one.}
+
+@item{@racket[(list _key _value ... ...)] --- A list of even length with
+alternating keys and values.  Equivalent to @racket[(lambda (spstyle) (hash-set*
+spstyle _key _value ... ...))].}
+
+@item{@racket[(hash _key _value/updater ... ...)] --- A hash that maps each key
+to either a value (if not a procedure) or an update procedure that takes the old
+value and produces a new one.}
+
+]}
 
 @defproc[(text-post-property [process (-> pict? pict?)]) any/c]{
 
@@ -308,8 +355,11 @@ Note the shadow behind the separating pict.
 }
 
 
+
+
+
 @; ------------------------------------------------------------
-@subsection{Layers}
+@section{Layers}
 
 @;{
          in-style
