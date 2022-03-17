@@ -113,8 +113,10 @@
     ;; handle-part : IStyle Part PreState -> (values PreState PostTx)
     (define/public (handle-part istyle p in-st)
       (match-define (part _ _ title0 style _ blocks parts) p)
-      (define sstyles (add-slide-styles style (hash-ref istyle 'slide-styles (hasheq))))
-      (define istyle* (add-style style istyle #:no-warn slide-style-keys))
+      (define-values (istyle* props*) (add-style* style istyle))
+      (define sstyles (add-slide-props props* (hash-ref istyle 'slide-styles (hasheq))))
+      ;;(define sstyles (add-slide-styles style (hash-ref istyle 'slide-styles (hasheq))))
+      ;;(define istyle* (add-style style istyle))
       (case (hash-ref sstyles 'ignore #f)
         [(ignore*)
          (values in-st (lambda (post) post))]
@@ -218,12 +220,11 @@
 
 (struct make-slides-prop (mk))
 
-(define (add-slide-styles s sstyles)
-  (match s
-    [(style name props)
-     (for/fold ([sstyles sstyles])
-               ([prop (in-list (cons name props))])
-       (add-slide-style-prop prop sstyles))]))
+(define (add-slide-props props sstyles)
+  (foldl add-slide-style-prop sstyles props))
+
+;; Note: in code like `@section[#:style ???]{...}`, a string is treated as a
+;; style name, but a symbol is treated as a style property.
 
 (define (add-slide-style-prop prop sstyles)
   (match prop
@@ -244,7 +245,6 @@
     ignore ignore*
     no-title))
 
-;; FIXME: move to single 'title-styles key?
 (define (get-title-istyle istyle)
   (add-style 'slide-title istyle))
 
