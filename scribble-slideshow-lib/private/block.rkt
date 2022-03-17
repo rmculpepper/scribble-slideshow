@@ -26,8 +26,8 @@
 ;; - 'block-inset : (U 'code 'vertical)
 
 ;; A RenderedBlock is one of
-;; - Pict
-;; - (cons (U #f Pict) Pict)
+;; - Pict                       -- normal case
+;; - (cons (U #f Pict) Pict)    -- cdr is floated to the right
 
 (define (add-block-style s istyle)
   (define-values (istyle* props*) (add-block-style* s istyle))
@@ -89,9 +89,11 @@
         [(null? right-ps) (apply vl-append sep left-ps)]
         [else (cons (apply vl-append sep left-ps) (apply vr-append sep right-ps))]))
 
+;; fix-floats : RenderedBlock -> Pict
 (define (fix-floats p)
   (if (pair? p) (rt-superimpose (car p) (cdr p)) p))
 
+;; rendered-block-width : RenderedBlock -> Real
 (define (rendered-block-width p)
   (if (pair? p) (max (if (car p) (pict-width (car p)) 0) (pict-width (cdr p))) (pict-width p)))
 
