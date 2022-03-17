@@ -35,16 +35,6 @@
 
 (define (add-block-style* s istyle)
   (add-style* s istyle
-              #:ignore-names '(;; paragraph
-                               author pretitle wraps
-                               ;; table
-                               boxed centered block
-                               ;; itemization
-                               compact ordered
-                               ;; nested-flow
-                               inset code-inset vertical-inset
-                               ;; compound-paragraph (none)
-                               )
               #:ignore-props '(;; paragraph
                                omitable div never-indents
                                ;; table
@@ -56,21 +46,6 @@
                                ;; compound-paragraph
                                command never-indents
                                )))
-
-
-(define (add-block-style s istyle)
-  (match s
-    [(s:style name props)
-     (foldl add-block-style-prop (add-block-style name istyle) props)]
-    [_
-     (log-scribble-slideshow-warning "add-block-style: ignoring: ~e" s)
-     istyle]))
-
-(define (add-block-style-prop prop istyle)
-  (match prop
-    [(or 'omitable 'never-indents) istyle]
-    ['decorative istyle] ;; FIXME?
-    [prop (add-style-prop prop istyle)]))
 
 (define (remove-block-styles istyle)
   (hash-remove* istyle '(bgcolor block-halign block-border block-inset)))
@@ -123,24 +98,16 @@
 ;; ------------------------------------------------------------
 ;; Table Styles
 
-(define (add-table-style style istyle)
-  (match style
-    [(s:style name props)
-     (foldl add-table-style-prop (add-table-style name istyle) props)]
-    ['centered
-     (hash-set istyle 'block-halign 'center)]
-    [_ (add-block-style style istyle)]))
-
-(define (add-table-style-prop prop istyle)
-  (match prop
-    [(s:table-cells styless)
-     (hash-set istyle 'table-cells styless)]
-    [(s:table-columns styles)
-     (hash-set istyle 'table-cols styles)]
-    [_ (add-block-style-prop prop istyle)]))
-
-(define (remove-table-styles istyle)
-  (remove-block-styles (hash-remove* istyle '(table-cells table-cols))))
+(define (add-table-style s istyle)
+  (define-values (istyle* props*) (add-style* s istyle #:ignore-props '()))
+  (for/fold ([col-styles #f] [cell-styless #f] #:result (values istyle* col-styles cell-styless))
+            ([prop (in-list props*)])
+    (match prop
+      [(s:table-cells cell-styless)
+       (values col-styles cell-styless)]
+      [(s:table-columns col-styles)
+       (values col-styles cell-styless)]
+      [_ (values col-styles cell-styless)])))
 
 (define (apply-table-styles istyle p)
   (apply-block-styles istyle p))
@@ -154,11 +121,9 @@
 ;; - 'cell-valign : (U 'top 'bottom 'vcenter 'baseline) -- currently ignored
 ;; - 'cell-bgcolor : (U color% String)
 
-(define (add-table-cell-style style istyle)
-  (match style
-    [(s:style name props)
-     (foldl add-table-cell-style-prop (add-table-cell-style name istyle) props)]
-    [_ (add-block-style style istyle)]))
+(define (add-table-cell-style s istyle)
+  (define-values (istyle* props*) (add-style* s istyle #:ignore-props '()))
+  (foldl add-table-cell-style-prop istyle* props*))
 
 (define (add-table-cell-style-prop prop istyle)
   (match prop
@@ -173,7 +138,7 @@
     ['bottom-border (hash-cons istyle 'cell-border 'bottom)]
     [(s:background-color-property color)
      (hash-set 'istyle 'cell-bgcolor (to-color color))]
-    [_ (add-block-style-prop prop istyle)]))
+    [_ istyle]))
 
 (define (remove-table-cell-styles istyle)
   (hash-remove* istyle '(cell-halign cell-valign cell-border cell-bgcolor)))
@@ -221,21 +186,19 @@
        (define p (content->pict content (remove-block-styles istyle) width))
        (apply-block-styles istyle p))]
     [(s:compound-paragraph style blocks)
-     (define compact? #f)
      (let ([istyle (add-block-style style istyle)])
-       (append-blocks (if compact? (get-line-sep istyle) (get-block-sep istyle))
+       (append-blocks (get-block-sep istyle)
                       (for/list ([block (in-list blocks)])
                         (render-block block istyle))))]
     [(s:nested-flow style flow)
      (render-flow flow (add-block-style style istyle))]
     [(s:itemization style flows)
-     (define compact? (eq? (s:style-name style) 'compact))
      (define ordered? (eq? (s:style-name style) 'ordered))
      (let ([istyle (add-block-style style istyle)])
-       (render-itemization compact? ordered? flows istyle))]
+       (render-itemization ordered? flows istyle))]
     [(s:table style blockss)
      (let ([istyle (hash-set istyle 'inset-to-width? #f)])
-       (table->pict blockss (add-table-style style istyle)))]
+       (render-table blockss style istyle))]
     [(? s:traverse-block? block)
      (render-block (s:traverse-block-block block (current-resolve-info)) istyle)]
     [(? s:delayed-block? block)
@@ -244,28 +207,31 @@
                       (render-block b istyle)))]
     ))
 
-(define (render-itemization compact? ordered? flows istyle)
+(define (render-itemization ordered? flows istyle)
   (define bullets (for/list ([index (in-naturals 1)] [flow (in-list flows)])
                     (cond [ordered? (base-content->pict (format "~s." index) istyle)]
                           [else (get-bullet istyle)])))
   (define bullet-w (apply max 0 (map pict-width bullets)))
-  (define bullet-sep (get-bullet-sep istyle)) ;; FIXME!
+  (define bullet-sep (get-bullet-sep istyle))
   (define sub-width (- (hash-ref istyle 'block-width +inf.0) bullet-w bullet-sep))
   (let ([istyle (hash-set istyle 'block-width sub-width)])
-    (append-blocks (if compact? (get-line-sep istyle) (get-block-sep istyle))
+    (append-blocks (get-block-sep istyle)
                    (for/list ([bullet (in-list bullets)] [flow (in-list flows)])
                      (htl-append bullet-sep
                                  (inset bullet (- bullet-w (pict-width bullet)) 0 0 0)
                                  (flow->pict flow istyle))))))
 
-(define (table->pict cellss istyle)
+(define (render-table cellss style istyle)
+  (define-values (istyle* col-styles cell-styless) (add-table-style style istyle))
   (define nrows (length cellss))
   (define ncols (length (car cellss)))
-  (define col-styles (or (hash-ref istyle 'table-cols #f) (make-list ncols #f)))
-  (define cell-styless (or (hash-ref istyle 'table-cells #f)
-                           (make-list nrows (make-list ncols #f))))
+  (render-table* cellss nrows ncols istyle*
+                 (or col-styles (make-list ncols #f))
+                 (or cell-styless (make-list nrows (make-list ncols #f)))))
+
+(define (render-table* cellss nrows ncols istyle col-styles cell-styless)
   (define cell-istyle
-    (hash-set* (remove-table-styles istyle) 'inset-to-width? #f 'block-width +inf.0))
+    (hash-set* (remove-block-styles istyle) 'inset-to-width? #f 'block-width +inf.0))
   (define rendered-cellss ;; (Listof (Listof (U (cons Pict IStyle) #f)))
     (for/list ([cells (in-list cellss)]
                [cell-styles (in-list cell-styless)])
