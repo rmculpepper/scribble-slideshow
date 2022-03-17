@@ -235,7 +235,7 @@ and @s-tech{flow}:
 blocks.}
 
 @item{@racket['line-sep] --- A nonnegative real, used for the spacing between
-lines in a paragraph and between @s-tech{items} in a @racket['compact]
+lines in a paragraph and between items in a @racket['compact]
 @s-tech{itemization}.}
 
 ]
