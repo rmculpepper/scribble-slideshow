@@ -501,19 +501,14 @@ They turn brown when overripe.
 @; ============================================================
 @section[#:tag "notes"]{Notes}
 
-The interpretation of Scribble style names and style properties is incomplete,
-and it is not customizable. It is sometimes inconsistent with slideshow's
-defaults; for example, the default block width is wider.
-
-The current hook for changing the base styles (@racket[current-sp-style]) is
-likely to change in the future.
+The interpretation of Scribble style names and style properties is
+incomplete, and the interpretation of style properties is not
+customizable. It is sometimes inconsistent with slideshow's defaults;
+for example, the default block width is wider.
 
 The default styles used by @racket[scribble-slides] are different from those
 used by @racket[slide], so mixing the two will produce inconsistent-looking
 results. The rendering of titles is especially different.
-
-Titles are not baseline-aligned, so titles that result in picts of different
-heights look inconsistent. This might be a slideshow issue.
 
 Staging does not cooperate with slideshow's @tt{--condense} mode.
 
