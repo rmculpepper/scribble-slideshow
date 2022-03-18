@@ -3,8 +3,8 @@
           (for-label racket/base racket/contract racket/draw
                      scribble-slideshow/pict scribble-slideshow/slideshow
                      scribble/base scribble/core scribble/manual scribble/decode
-                     (except-in pict table) pict/shadow
-                     (only-in slideshow slide)))
+                     (except-in pict table) pict/shadow ppict/align ppict/zone
+                     (only-in slideshow slide margin title-h current-gap-size)))
 
 @(module stx racket/base
    (require racket/string racket/port syntax/strip-context syntax/modread
@@ -479,13 +479,143 @@ They turn brown when overripe.
 
 }|
 
+
 @; ------------------------------------------------------------
 @subsection{Layers}
 
+A @deftech{layer} ....
+
+@slides-example|{
+#lang scribble/manual
+@(require scribble-slideshow ppict/zone (only-in pict frame))
+
+@(define main-layer
+   (slide-layer 'lc (coord-zone 0 0 0.6 1)))
+@(define side-layer
+   (slide-layer 'lt (coord-zone '(0.6 40) 0 1 1)
+                ;; #:post-decorate frame
+                #:style (hasheq 'text-size 18 'color "blue")))
+
+@title{A consideration of ponderous musings}
+
+@in-layer[#:layer main-layer]{
+
+Over on the left, there are many important points to consider.
+@itemlist[
+@item{There is @emph{this} point.}
+@item{And there is @bold{that} point.}
+]
+
+The points above notwithstanding, the contrary position is also defensible.
+}
+
+@in-layer[#:layer side-layer]{
+
+This argument is pure gibberish.
+
+Why am I saying these things?
+
+Can you hear me?
+
+Please, let me out!
+
+I'm trapped in the side-commentary of a slide presentation!
+}
+}|
+
+
+
+
+@defproc[(layer? [v any/c]) boolean?]{
+
+Returns @racket[#t] if @racket[v] is a @tech{layer}, @racket[#f] otherwise.
+}
+
+@defproc[(layer [align/placer (or/c placer? align/c)]
+                [zone zone?]
+                [#:z z real? 1]
+                [#:style style style-update/c '()]
+                [#:pre-decorate pre-decorate (or/c #f (-> pict? pict?)) #f]
+                [#:post-decorate post-decorate (or/c #f (-> pict? pict?)) #f])
+         layer?]{
+
+Creates a @tech{layer} that places its content according to
+@racket[align/placer] within @racket[zone] relative to the slide.
+
+If @racket[align/placer] is an alignment, it is converted to a placer using
+@racket[aligned-placer].
+
+If @racket[pre-decorate] is a procedure, it is called on the contents of the
+layer before they are inset to the size of the layer's zone. If
+@racket[post-decorate] is a procedure, it is called on the (pre-decorated)
+contents of the layer after they are inset to the size of the layer's zone.
+}
+
+@defproc[(slide-layer [align/placer (or/c placer? align/c)]
+                      [zone (or/c #f zone?) #f]
+                      [#:base base slide-zone-symbol/c 'body]
+                      [#:z z real? 1]
+                      [#:style style style-update/c '()]
+                      [#:pre-decorate pre-decorate (or/c #f (-> pict? pict?)) #f]
+                      [#:post-decorate post-decorate (or/c #f (-> pict? pict?)) #f])
+         layer?]{
+
+Equivalent to @racket[(layer align/placer (subzone zone (slide-zone base)) ....)].
+}
+
+
+@defproc[(slide-zone [name symbol?]
+                     [#:aspect aspect aspect/c #f])
+         zone?]{
+
+Returns a zone corresponding to one of the following areas of the slide,
+depending on @racket[name]:
+@itemlist[
+
+@item{@racket['main] --- Centered zone whose top edge is @racket[(+ margin
+title-h (* 2 (current-gap-size)))] units from the top of the screen.}
+
+@item{@racket['tall-main] --- Centered zone whose top edge is @racket[(+ margin
+title-h (* 1 (current-gap-size)))] units from the top of the screen.}
+
+@item{@racket['full] --- Centered zone whose top and bottom edges are
+@racket[margin] units from the edges of the screen.}
+
+@item{@racket['screen] --- Centered zone whose edges are the same as the edges
+of the screen.}
+
+@item{@racket['body] --- Non-centered zone whose top edge is @racket[(+ margin
+title-h (* 2 (current-gap-size)))] units from the top of the screen and whose
+bottom edge is @racket[margin] units from the bottom of the screen.}
+
+@item{@racket['tall-body] --- Non-centered zone whose top edge is @racket[(+
+margin title-h (* 1 (current-gap-size)))] units from the top of the screen and
+whose bottom edge is @racket[margin] units from the bottom of the screen.}
+
+@item{@racket['title] --- Non-centered zone whose top edge is @racket[margin]
+units from the top of the screen and whose height is @racket[title-h].}
+
+@item{@racket['main/full] --- Title-dependent zone that is like @racket['main]
+if a title is present and like @racket['full] if there is no title present.}
+
+]
+
+Except for @racket['screen], the left and right edges are @racket[margin] units
+from the edges of an @racket[aspect]-dimensioned screen.
+}
+
+
+@defproc[(in-layer [#:layer layer layer?]
+                   [pre-flow pre-flow?] ...)
+         block?]{
+
+Decodes @racket[pre-flow] and marks the resulting blocks for inclusion
+in the layer @racket[layer].
+}
+
+
 @;{
          in-style
-         in-layer
-         layer
          slide-layer
          slide-zone
 }
