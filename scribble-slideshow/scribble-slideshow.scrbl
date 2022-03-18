@@ -490,36 +490,25 @@ A @deftech{layer} ....
 @(require scribble-slideshow ppict/zone (only-in pict frame))
 
 @(define main-layer
-   (slide-layer 'lc (coord-zone 0 0 0.6 1)))
+   (slide-layer 'lc (coord-zone 0.2 0 0.8 1) #:base 'main))
 @(define side-layer
-   (slide-layer 'lt (coord-zone '(0.6 40) 0 1 1)
-                ;; #:post-decorate frame
-                #:style (hasheq 'text-size 18 'color "blue")))
+   (slide-layer 'rb
+                #:post-decorate frame
+                #:style (hasheq 'text-size 20 'color "blue")))
 
-@title{A consideration of ponderous musings}
+@title{An enumeration of ponderous considerations}
 
 @in-layer[#:layer main-layer]{
 
-Over on the left, there are many important points to consider.
+In the final analysis, there are many important points to consider.
 @itemlist[
 @item{There is @emph{this} point.}
 @item{And there is @bold{that} point.}
-]
-
-The points above notwithstanding, the contrary position is also defensible.
-}
+]}
 
 @in-layer[#:layer side-layer]{
 
-This argument is pure gibberish.
-
-Why am I saying these things?
-
-Can you hear me?
-
-Please, let me out!
-
-I'm trapped in the side-commentary of a slide presentation!
+The points above notwithstanding, the contrary position is also defensible.
 }
 }|
 
