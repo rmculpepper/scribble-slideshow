@@ -209,7 +209,7 @@
 ;; Default placer for 'auto
 
 (define (layer align/placer zone
-               #:z [z (next-auto-z)]
+               #:z [z 1]
                #:style [style (hasheq)]
                #:pre-decorate [pre-decorator #f]
                #:post-decorate [post-decorator #f])
@@ -223,7 +223,7 @@
 (define (slide-layer align/placer [zone #f]
                      #:aspect [slide-aspect #f]
                      #:base [slide-zone-symbol 'body]
-                     #:z [z (next-auto-z)]
+                     #:z [z 1]
                      #:style [style (hasheq)]
                      #:pre-decorate [pre-decorator #f]
                      #:post-decorate [post-decorator #f])

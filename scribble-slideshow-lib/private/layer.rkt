@@ -147,14 +147,3 @@
     (define/public (post-decorate p)
       (if post-decorator (post-decorator p) p))
     ))
-
-;; ----------------------------------------
-
-;; FIXME: add [#:block-width rel/abs], set in update-style?
-
-(define (next-auto-z)
-  (set! auto-z (+ auto-z auto-dz))
-  auto-z)
-
-(define auto-z 1.0)
-(define auto-dz 0.000001)
