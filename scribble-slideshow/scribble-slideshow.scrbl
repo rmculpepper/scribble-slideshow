@@ -160,6 +160,288 @@ presenting them as slides.
 
 Since this procedure does not depend on @racketmodname[slideshow], it is not
 affected by changes to slideshow configuration like the margin and title height.
+}
+
+@defproc[(part/make-slides [proc (-> void?)]) part?]{
+
+Creates a @s-tech{part} wrapping a procedure. The procedure is run for
+effect when the part is processed by @racket[scribble-slides] or its
+equivalent; it should call @racket[slide] or similar functions to emit
+slides for that part of the document.
+}
+
+
+@; ------------------------------------------------------------
+@subsection[#:tag "style"]{Styles}
+
+The translation from Scribble structures to picts and slides is controlled by
+the current @deftech{sp-style} (Scribble to Pict style), which is represented by
+an immutable hash with symbol keys. The hash contains two kinds of data:
+@itemlist[
+
+@item{settings that directly affect the generation of picts from Scribble data,
+such as the @racket['text-size] key which determines the current font size, and}
+
+@item{a @tech{style mapping} (stored in the the @racket['styles] key) which
+translates a Scribble @s-tech{style name} to an update of the other
+@tech{sp-style} settings}
+
+]
+The following subsections describe some of the @tech{sp-style} keys.
+
+@defthing[current-sp-style parameter?]{
+
+@bold{Deprecated.} Use a @racket[style-transformer] in the style of the root
+@s-tech{part} of the Scribble document to set the initial styles instead.
+}
+
+
+@; ----------------------------------------
+@subsubsection[#:tag "content-style"]{Translation of Scribble Content}
+
+The following @tech{sp-style} keys are relevant to the translation of
+Scribble @s-tech{content}:
+@itemlist[
+
+@item{@racket['text-base], @racket['text-mods] --- These are combined to get the
+style argument of @racket[text].}
+
+@item{@racket['text-size] --- An integer between 1 and 1024. See @racket[text].}
+
+@item{@racket['white-space] --- One of the following: @racket[#f] (normal
+breaking and collapsing), @racket['pre] (no break, no collapse),
+@racket['pre-wrap] (break, no collapse), @racket['nowrap] (collapse, no break).}
+
+@item{@racket['color] --- A string or @racket[color%]. Used to @racket[colorize]
+each pict produced by Scribble @s-tech{content}.}
+
+@item{@racket['scale] --- A real number used to @racket[scale] each pict
+produced to represent Scribble @s-tech{content}.}
+
+@item{@racket['text-post] --- A list of pict-to-pict transformers, applied in
+order to each pict produced to represent Scribble text. See also
+@racket[text-post-property].}
+
+@item{@racket['elem-post] --- A list of pict-to-pict transformers, applied in
+order to each pict produced to represent any Scribble @s-tech{content}. See also
+@racket[elem-post-property].}
+
+@item{@racket['bgcolor] --- A string or @racket[color%].}
+
+]
+
+The initial @tech{style mapping} contains entries for common @s-tech{style
+names} for Scribble content. For example:
+@itemlist[
+
+@item{@racket['sf] sets the @racket['text-base] key to @racket['swiss]}
+
+@item{@racket['larger] multiplies the @racket['scale] key's value by @racket[3/2]}
+
+@item{@racket["RktVal"] (produced by @racket[racket], @racket[code], etc) sets
+the @racket['text-base] key to @racket['modern] and the @racket['color] key to
+@racket['(@#,racketvalfont{#x22 #x8B #x22})]}
+
+@item{and so on}
+]
+
+The following Scribble @s-tech{style properties} are recognized and handled:
+@racket[color-property] and @racket[background-color-property].
+
+@; ----------------------------------------
+@subsubsection[#:tag "block-style"]{Translation of Scribble Flow}
+
+The following @tech{sp-style} keys are relevant to the translation of Scribble @s-tech{blocks}
+and @s-tech{flow}:
+@itemlist[
+
+@item{@racket['block-width] --- A positive real, may be @racket[+inf.0] to
+disable linebreaking.}
+
+@item{@racket['block-border] --- A list of symbols in @racket['all],
+@racket['left], @racket['right], @racket['top], @racket['bottom].}
+
+@item{@racket['bgcolor] --- @racket[#f] or a string or @racket[color%].}
+
+@;{Not described: inset-to-width?, block-halign, block-inset}
+
+@item{@racket['block-sep] --- A nonnegative real, used for the spacing between
+blocks.}
+
+@item{@racket['line-sep] --- A nonnegative real, used for the spacing between
+lines in a paragraph and between items in a @racket['compact]
+@s-tech{itemization}.}
+
+]
+
+The initial @tech{style mapping} contains entries for common @s-tech{style
+names} for Scribble flow. For example:
+@itemlist[
+
+@item{@racket['compact] sets the @racket['block-sep] key to the current value of
+the @racket['line-sep] key (and it works for any Scribble @s-tech{block}, not
+just @racket[itemization]s)}
+
+]
+
+The following Scribble @s-tech{style properties} are recognized and handled:
+@racket[color-property], @racket[background-color-property],
+@racket[table-columns], and @racket[table-cells].
+
+@; ----------------------------------------
+@subsubsection[#:tag "part-style"]{Translation of Scribble Parts}
+
+The following @tech{sp-style} keys are relevant to the translation of Scribble
+@s-tech{parts}:
+@itemlist[
+
+@item{@racket['slide-styles] --- A hash mapping symbol keys such as
+@racket['aspect] and @racket['layout]) to default slide settings.}
+
+]
+
+The initial @tech{style mapping} contains one pseudo-@s-tech{style name} for
+Scribble parts:
+@itemlist[
+
+@item{@racket['slide-title] sets various @s-tech{content}-related keys to style
+the part's title}
+
+]
+
+The following custom @s-tech{style properties} are recognized and handled:
+@itemlist[
+
+@item{@racket['next], @racket['alt], and @racket['digress] --- Sets the
+@seclink["staging-mode"]{staging mode} of the current part.}
+
+@item{@racket['auto], @racket['center], @racket['top], @racket['tall] --- Sets
+the current slide's layout.}
+
+@item{@racket['fullscreen], @racket['widescreen] --- Sets the current slide's
+aspect ratio.}
+
+@item{@racket['ignore] --- Do not generate a slide for this part's immediate
+contents, but process the subparts normally.}
+
+@item{@racket['ignore*] --- Do not generate any slides for this part, neither
+for its immediate contents nor for its subparts.}
+
+@item{@racket['no-title] --- Do not display the part's title.}
+
+]
+
+@; ----------------------------------------
+@subsubsection[#:tag "style-style"]{Translation of Scribble Styles}
+
+The following keys are relevant to the translation of Scribble @s-tech{styles}:
+@itemlist[
+
+@item{@racket['styles] --- A @deftech{style mapping}, a hash mapping Scribble
+@s-tech{style names} (symbols and strings) to @tech{sp-style updates}.}
+
+]
+
+An @deftech{sp-style update} is one of the following:
+@itemlist[
+
+@item{@racket[(-> hash? hash?)] --- A procedure that takes the current
+@tech{sp-style} and returns a new one.}
+
+@item{@racket[(list _key _value ... ...)] --- A list of even length with
+alternating keys and values.  Equivalent to @racket[(lambda (spstyle) (hash-set*
+spstyle _key _value ... ...))].}
+
+@item{@racket[(hash _key _value/updater ... ...)] --- A hash that maps each key
+to either a value (if not a procedure) or an update procedure that takes the old
+value and produces a new one.}
+
+]
+
+@(define (styleprop) (s-tech "style property"))
+
+@defproc[(style-transformer [update @#,tech{sp-style update}]) any/c]{
+
+Returns an opaque value suitable as a Scribble @(styleprop). When the style
+property is applied to a Scribble structure, it updates the current
+@tech{sp-style} used for that process that part of the document.
+}
+
+@defproc[(text-post-property [process (-> pict? pict?)]) any/c]{
+
+Returns an opaque value suitable as a Scribble @(styleprop). When the style
+property is applied to Scribble content, each pict that is produced from an
+embedded string is post-processed with @racket[process]. Text post-processors
+are applied innermost-first, and all text post-processors are applied before any
+element post-processor.
+
+Note that strings may be split into many pieces as part of the line-breaking
+process; the @racket[process] function is applied to each piece individually.
+Future versions of this library may change the way strings are split.
+
+@code-example|{
+@(define (tx-elem f . content)
+   (apply elem #:style (style #f (list (text-post-property f))) content))
+@(define ((shadow-tx rad dxy [color "purple"]) p)
+   (shadow p rad dxy dxy #:shadow-color color))
+@flow-pict{
+@tx-elem[frame]{Here is some @tx-elem[(shadow-tx 4 2)]{cool @disk[20] text}.}
+}}|
+
+Note that the separating pict has no shadow and no frame.
+}
+
+@defproc[(elem-post-property [process (-> pict? pict?)]) any/c]{
+
+Returns an opaque value suitable as a Scribble @(styleprop). When the style
+property is applied to Scribble content, each pict that is produced from the
+@s-tech{content} is post-processed with @racket[process]. All element
+post-processors are applied innermost-first.
+
+Note that content may be split into many pieces as part of the line-breaking
+process; the @racket[process] function is applied to each piece individually.
+Future versions of this library may change the way strings are split.
+
+@code-example|{
+@(define (ex-elem f . content)
+   (apply elem #:style (style #f (list (elem-post-property f))) content))
+@flow-pict{
+Here is some @ex-elem[(shadow-tx 4 2)]{cool @disk[20] text}.
+}}|
+
+Note the shadow behind the separating pict.
+}
+
+
+@; ------------------------------------------------------------
+@subsection[#:tag "staging-mode"]{Slide Staging Modes}
+
+A part can build on the state of the previous part. This state includes the
+title, the contents of the slide (both on the main @tech{layer} and any other
+@tech{layers}). A part can also control what state it leaves to the next part. A
+staging mode represents a combination of these two choices:
+@itemlist[
+
+@item{@racket[#f] (default) --- Start with empty state. Leave current state for
+next part.}
+
+@item{@racket['next] --- Start with inherited state. Leave current state for next
+part.}
+
+@item{@racket['alt] --- Start with inherited state. Reset to inherited state for
+next part.}
+
+@item{@racket['digress] --- Start with empty state. Reset to inherited state for
+next part.}
+
+]
+Note that @racket['alt] and @racket['digress] only reset the state @emph{after}
+the part's subparts are processed.
+
+If the part's title is the string @racket[".."], the slide uses the title from
+the inherited state.
+
+For example:
 
 @slides-example|{
 #lang scribble/manual
@@ -183,183 +465,22 @@ Bananas are yellow when ripe.
 
 Before that, they are green.
 
+@subsubsection[#:style 'next]{..}
+
+Well, yellow-green.
+
+@subsection[#:style 'digress]{Commercial break}
+
+@centered{Shop smart! Shop @bold{S-MART}!}
+
 @subsection[#:style 'next]{..}
 
-They turn black when overripe.
+They turn brown when overripe.
 
 }|
 
-}
-
-@defproc[(part/make-slides [proc (-> void?)]) part?]{
-
-Creates a @s-tech{part} wrapping a procedure. The procedure is run for
-effect when the part is processed by @racket[scribble-slides] or its
-equivalent; it should call @racket[slide] or similar functions to emit
-slides for that part of the document.
-}
-
-
 @; ------------------------------------------------------------
-@subsection[#:tag "style"]{Styles}
-
-The translation from Scribble structures to picts is controlled by the current
-@deftech{sp-style} (Scribble to Pict style), which is represented by an
-immutable hash with symbol keys.
-
-@defthing[current-sp-style parameter?]{
-
-@bold{Deprecated.} Use a @racket[style-transformer] in the style of the root
-@s-tech{part} of the Scribble document to set the initial styles instead.
-}
-
-
-@; ----------------------------------------
-@subsection[#:tag "content-style"]{Translation of Scribble Content}
-
-The following keys are relevant to the translation of Scribble @s-tech{content}:
-@itemlist[
-
-@item{@racket['text-base], @racket['text-mods] --- These are combined to get the
-style argument of @racket[text].}
-
-@item{@racket['text-size] --- An integer between 1 and 1024. See @racket[text].}
-
-@item{@racket['white-space] --- One of the following: @racket[#f] (normal
-breaking and collapsing), @racket['pre] (no break, no collapse),
-@racket['pre-wrap] (break, no collapse), @racket['nowrap] (collapse, no break).}
-
-@item{@racket['color] --- A string or @racket[color%]. Used to @racket[colorize]
-each pict produced by Scribble @s-tech{content}.}
-
-@item{@racket['scale] --- A real number used to @racket[scale] each pict
-produced to represent Scribble @s-tech{content}.}
-
-@item{@racket['text-post] --- A list of pict-to-pict transformers, applied in
-order to each pict produced to represent Scribble text.}
-
-@item{@racket['elem-post] --- A list of pict-to-pict transformers, applied in
-order to each pict produced to represent any Scribble @s-tech{content}.}
-
-@item{@racket['bgcolor] --- A string or @racket[color%].}
-
-]
-
-
-@; ----------------------------------------
-@subsection[#:tag "block-style"]{Translation of Scribble Flow}
-
-The following keys are relevant to the translation of Scribble @s-tech{blocks}
-and @s-tech{flow}:
-@itemlist[
-
-@item{@racket['block-width] --- A positive real, may be @racket[+inf.0].}
-
-@item{@racket['block-border] --- A list of symbols in @racket['all],
-@racket['left], @racket['right], @racket['top], @racket['bottom].}
-
-@item{@racket['bgcolor] --- @racket[#f] or a string or @racket[color%].}
-
-@;{Not described: inset-to-width?, block-halign, block-inset}
-
-@item{@racket['block-sep] --- A nonnegative real, used for the spacing between
-blocks.}
-
-@item{@racket['line-sep] --- A nonnegative real, used for the spacing between
-lines in a paragraph and between items in a @racket['compact]
-@s-tech{itemization}.}
-
-]
-
-@; ----------------------------------------
-@subsection[#:tag "part-style"]{Translation of Scribble Parts}
-
-
-@; ----------------------------------------
-@subsection[#:tag "style-style"]{Translation of Scribble Styles}
-
-The following keys are relevant to the translation of Scribble @s-tech{styles}:
-@itemlist[
-
-@item{@racket['styles] --- A hash mapping Scribble @s-tech{style names} to
-@tech{sp-style updates}. See @racket[style-transformer] for a discussion of
-@tech{sp-style updates}.}
-
-]
-
-@(define (styleprop) (s-tech "style property"))
-
-@defproc[(style-transformer [update @#,tech{sp-style update}]) any/c]{
-
-Returns an opaque value suitable as a Scribble @(styleprop). When the style
-property is applied to a Scribble structure, it updates the current
-@tech{sp-style} used for that process that part of the document.
-
-An @deftech{sp-style update} is one of the following:
-@itemlist[
-
-@item{@racket[(-> hash? hash?)] --- A procedure that takes the current
-@tech{sp-style} and returns a new one.}
-
-@item{@racket[(list _key _value ... ...)] --- A list of even length with
-alternating keys and values.  Equivalent to @racket[(lambda (spstyle) (hash-set*
-spstyle _key _value ... ...))].}
-
-@item{@racket[(hash _key _value/updater ... ...)] --- A hash that maps each key
-to either a value (if not a procedure) or an update procedure that takes the old
-value and produces a new one.}
-
-]}
-
-@defproc[(text-post-property [process (-> pict? pict?)]) any/c]{
-
-Returns an opaque value suitable as a Scribble @(styleprop). When the style
-property is applied to Scribble content, each pict that is produced from an
-embedded string is post-processed with @racket[process]. Text post-processors
-are applied innermost-first, and all text post-processors are applied before any
-element post-processor.
-
-Note that strings may be split into many pieces as part of the line-breaking
-process; the @racket[process] function is applied to each piece individually.
-
-@code-example|{
-@(define (tx-elem f . content)
-   (apply elem #:style (style #f (list (text-post-property f))) content))
-@(define ((shadow-tx rad dxy [color "purple"]) p)
-   (shadow p rad dxy dxy #:shadow-color color))
-@flow-pict{
-Here is some @tx-elem[(shadow-tx 4 2)]{cool @disk[20] text}.
-}}|
-
-Note that the separating pict has no shadow.
-}
-
-@defproc[(elem-post-property [process (-> pict? pict?)]) any/c]{
-
-Returns an opaque value suitable as a Scribble @(styleprop). When the style
-property is applied to Scribble content, each pict that is produced from the
-@s-tech{content} is post-processed with @racket[process]. All element
-post-processors are applied innermost-first.
-
-Note that content may be split into many pieces as part of the line-breaking
-process; the @racket[process] function is applied to each piece individually.
-
-@code-example|{
-@(define (ex-elem f . content)
-   (apply elem #:style (style #f (list (elem-post-property f))) content))
-@flow-pict{
-Here is some @ex-elem[(shadow-tx 4 2)]{cool @disk[20] text}.
-}}|
-
-Note the shadow behind the separating pict.
-}
-
-
-
-
-
-@; ------------------------------------------------------------
-@section{Layers}
+@subsection{Layers}
 
 @;{
          in-style
