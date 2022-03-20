@@ -3,7 +3,8 @@
           (for-label racket/base racket/contract racket/draw
                      scribble-slideshow/pict scribble-slideshow/slideshow
                      scribble/base scribble/core scribble/manual scribble/decode
-                     (except-in pict table) pict/shadow ppict/align ppict/zone
+                     (except-in pict table) pict/shadow
+                     ppict/align ppict/pict ppict/zone
                      (only-in slideshow slide margin title-h current-gap-size)))
 
 @(module stx racket/base
@@ -39,6 +40,9 @@
 
 @(define (p-tech . pc)
    (apply tech #:doc '(lib "pict/scribblings/pict.scrbl") pc))
+
+@(define (pp-tech . pc)
+   (apply tech #:doc '(lib "ppict/ppict.scrbl") pc))
 
 @(define repo "https://github.com/rmculpepper/scribble-slideshow/tree/master")
 
@@ -483,7 +487,11 @@ They turn brown when overripe.
 @; ------------------------------------------------------------
 @subsection{Layers}
 
-A @deftech{layer} ....
+A slide can be composed of contents on different @deftech{layers}. A slide layer
+consists of a zone (@racket[zone?]) (which determines the block width for
+linebreaking), a placer (@racket[placer?]), a Z-order, and various
+styling-related settings. Layers cooperate with @seclink["staging-mode"]{slide
+staging}.
 
 @slides-example|{
 #lang scribble/manual
@@ -499,7 +507,6 @@ A @deftech{layer} ....
 @title{An enumeration of ponderous considerations}
 
 @in-layer[#:layer main-layer]{
-
 In the final analysis, there are many important points to consider.
 @itemlist[
 @item{There is @emph{this} point.}
@@ -507,13 +514,19 @@ In the final analysis, there are many important points to consider.
 ]}
 
 @in-layer[#:layer side-layer]{
-
 The points above notwithstanding, the contrary position is also defensible.
 }
+
+@section[#:style 'next]{..}
+
+@in-layer[#:layer main-layer]{
+That these arguments are compelling is self-evident.
+}
+
+@in-layer[#:layer side-layer]{
+But only in the sense that the benighted continue to attempt to defend it.
+}
 }|
-
-
-
 
 @defproc[(layer? [v any/c]) boolean?]{
 
@@ -535,9 +548,10 @@ If @racket[align/placer] is an alignment, it is converted to a placer using
 @racket[aligned-placer].
 
 If @racket[pre-decorate] is a procedure, it is called on the contents of the
-layer before they are inset to the size of the layer's zone. If
+layer for the current @seclink["staging-mode"]{stage}. If
 @racket[post-decorate] is a procedure, it is called on the (pre-decorated)
-contents of the layer after they are inset to the size of the layer's zone.
+contents of the layer after they are inset to the maximum size predicted for all
+related stages.
 }
 
 @defproc[(slide-layer [align/placer (or/c placer? align/c)]
@@ -551,7 +565,6 @@ contents of the layer after they are inset to the size of the layer's zone.
 
 Equivalent to @racket[(layer align/placer (subzone zone (slide-zone base)) ....)].
 }
-
 
 @defproc[(slide-zone [name symbol?]
                      [#:aspect aspect aspect/c #f])
@@ -593,7 +606,6 @@ Except for @racket['screen], the left and right edges are @racket[margin] units
 from the edges of an @racket[aspect]-dimensioned screen.
 }
 
-
 @defproc[(in-layer [#:layer layer layer?]
                    [pre-flow pre-flow?] ...)
          block?]{
@@ -601,20 +613,6 @@ from the edges of an @racket[aspect]-dimensioned screen.
 Decodes @racket[pre-flow] and marks the resulting blocks for inclusion
 in the layer @racket[layer].
 }
-
-
-@;{
-         in-style
-         slide-layer
-         slide-zone
-}
-
-@examples[#:eval the-eval #:result-only #:label #f
-(require (only-in (lib "scribble-slideshow/example/doc-demo.scrbl") [doc demo-doc])
-         (only-in pict frame scale))
-(for/list ([sp (in-list (scribble-slide-picts demo-doc))])
-  (frame (scale sp 1/4)))
-]
 
 
 @; ============================================================
