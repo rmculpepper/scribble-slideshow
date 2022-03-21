@@ -61,7 +61,7 @@
                    (case (hash-ref istyle 'block-halign 'left)
                      [(left) (inset p 0 0 dwidth 0)]
                      [(right) (inset p dwidth 0 0 0)]
-                     [(center) (inset p (/ dwidth 2) 0 (/ dwidth 2) 0)]
+                     [(center) (inset p (/ dwidth 2) 0)]
                      [(float-right) p])]
                   [else p])]
          [p (cond [(hash-ref istyle 'bgcolor #f)
@@ -184,8 +184,9 @@
   (match block
     [(s:paragraph style content)
      (let* ([istyle (add-block-style style istyle)]
-            [width (hash-ref istyle 'block-width)])
-       (define p (content->pict content (remove-block-styles istyle) width))
+            [width (hash-ref istyle 'block-width)]
+            [halign (hash-ref istyle 'block-halign #f)])
+       (define p (content->pict content (remove-block-styles istyle) width halign))
        (apply-block-styles istyle p))]
     [(s:compound-paragraph style blocks)
      (let ([istyle (add-block-style style istyle)])

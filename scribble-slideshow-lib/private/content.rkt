@@ -15,8 +15,23 @@
          "linebreak.rkt")
 (provide (all-defined-out))
 
-(define (content->pict content istyle width)
-  (content->pict/v3 content istyle width))
+(define (content->pict content istyle width [halign #f])
+  (define lines (content->picts content istyle width))
+  (define v*-append
+    (case halign [(right) vr-append] [(center) vc-append] [else vl-append]))
+  (define lines-p (apply v*-append (get-line-sep istyle) lines))
+  (define debug? (memq 'linebreak (hash-ref istyle 'debug null)))
+  (if debug? (inset/w width "lightblue" lines-p halign) lines-p))
+
+(define (content->picts content istyle width)
+  (define mode
+    (case (hash-ref istyle 'justify 'greedy)
+      [(#t justify) 'justify]
+      ;; [(ragged) 'ragged] ;; FIXME: ragged mode seems to be broken
+      [else 'greedy]))
+  (cond [(and (< width +inf.0) (memq mode '(justify ragged)))
+         (content->picts/kp content istyle width mode)]
+        [else (content->picts/greedy content istyle width)]))
 
 ;; ============================================================
 ;; Content
@@ -101,13 +116,15 @@
 (define (make-glue wsp mode)
   (define w (pict-width wsp))
   (case mode
-    [(justify)
+    [(greedy justify)
      (list (Glue wsp w (* w STRETCH) (* w SHRINK)))]
     [(ragged)
+     ;; FIXME: broken?!
      (list disallow-break
-           (Glue (blank) 0 (* w 3) 0)
+           (Glue blank/eol 0 (* w 3) 0)
            allow-break
-           (Glue wsp w (* w -3) 0))]))
+           (Glue wsp w (* w -3) 0))]
+    [else (error 'make-glue "bad mode: ~e" mode)]))
 
 (define (make-hyphen-penalty hyphen-pict)
   (define pw (pict-width hyphen-pict))
@@ -119,7 +136,7 @@
 (define disallow-break (Penalty (blank) 0 +inf.0 #f))
 (define force-break (Penalty (blank) 0 -inf.0 #f))
 
-;; Hack! This pict is recognized by get-line/v3 and not scaled, to
+;; Hack! This pict is recognized by get-line/kp and not scaled, to
 ;; avoid filling last line. FIXME: handle justify/align better
 (define blank/eol (blank))
 
@@ -130,12 +147,13 @@
 
 ;; ------------------------------------------------------------
 
-;; content->items : Content IStyle -> (Listof Item)
-(define (content->items content istyle [coalesce? #f])
-  (define ritems (content->reversed-items content istyle))
+;; content->items : Content IStyle (U 'greedy 'justify 'ragged) -> (Listof Item)
+(define (content->items content istyle mode)
+  (define coalesce? (eq? mode 'greedy))
+  (define ritems (content->reversed-items content istyle mode))
   (if coalesce? (coalesce/reverse-items ritems) (reverse ritems)))
 
-(define (content->reversed-items content istyle)
+(define (content->reversed-items content istyle mode)
   (define (loop content acc istyle)
     (match content
       [(? string?)
@@ -155,7 +173,7 @@
                    (list* allow-break (make-box seg-pict) allow-break acc)]
                   [(#f)
                    ;; FIXME: get stretch/shrink from istyle
-                   (append (reverse (make-glue seg-pict 'justify)) acc)]
+                   (append (reverse (make-glue seg-pict mode)) acc)]
                   [else (error 'content->items "unhandled wsmode ~e" wsmode)])]
                [(regexp-match? #rx"[\u00AD]" seg)
                 ;; FIXME: get hyphenation mode from istyle
@@ -215,23 +233,27 @@
       [_ (loop is (cons (Glue (apply hbl-append 0 ps) w str shr) acc))]))
   (loop is null))
 
-(define (inset/w w color p)
+(define (inset/w w color p halign)
   (define dw (if (rational? w) (- w (pict-width p)) 0))
-  (inset (frame #:color color (inset p 0 0 dw 0)) 0 0 (- dw) 0))
+  (define-values (ldw rdw)
+    (case halign
+      [(center) (values (/ dw 2) (/ dw 2))]
+      [(right) (values dw 0)]
+      [else (values 0 dw)]))
+  (inset (frame #:color color (inset p ldw 0 rdw 0)) (- ldw) 0 (- rdw) 0))
 
 ;; ------------------------------------------------------------
 ;; Greedy linebreaking
 
 ;; FIXME: handle @nonbreaking{..}, 'no-break style
 
-(define (content->pict/v1 content istyle width)
-  (define is (content->items content istyle #t))
-  (define lines (linebreak-items/v1 is width))
-  (inset/w width "pink" (apply vl-append (get-line-sep istyle) lines)))
+(define (content->picts/greedy content istyle width)
+  (define is (content->items content istyle 'greedy))
+  (linebreak-items/greedy is width))
 
-;; linebreak-items/v1 : (Listof Item) PositiveReal -> (Listof Pict)
+;; linebreak-items/greedy : (Listof Item) PositiveReal -> (Listof Pict)
 ;; Note: this assumes adjacent non-ws boxes have already been coalesced.
-(define (linebreak-items/v1 is width)
+(define (linebreak-items/greedy is width)
   (define (outer-loop is outer-acc)
     (match is
       ['() (reverse outer-acc)]
@@ -270,19 +292,17 @@
 ;; ------------------------------------------------------------
 ;; Justified
 
-(define (content->pict/v3 content istyle width)
-  (define debug? (memq 'linebreak (hash-ref istyle 'debug null)))
-  (define iv (list->vector (content->items content istyle #f)))
+(define (content->picts/kp content istyle width mode)
+  (define iv (list->vector (content->items content istyle mode)))
   (define breaks (get-line-breaks iv width #:p 10))
-  (define lines (get-lines/v3 width iv breaks debug?))
-  (define lines-p (apply vl-append (get-line-sep istyle) lines))
-  (if debug? (inset/w width "lightblue" lines-p) lines-p))
+  (define debug? (memq 'linebreak (hash-ref istyle 'debug null)))
+  (get-lines/kp width iv breaks debug?))
 
-(define (get-lines/v3 width iv lines [debug? #f])
+(define (get-lines/kp width iv lines [debug? #f])
   (for/list ([ln (in-list lines)])
-    (get-line/v3 width iv ln debug?)))
+    (get-line/kp width iv ln debug?)))
 
-(define (get-line/v3 width iv ln [debug? #f])
+(define (get-line/kp width iv ln [debug? #f])
   (match-define (line start end0 adjratio) ln)
   (define end (if (Penalty? (vector-ref iv end0)) (add1 end0) end0))
   (define picts
