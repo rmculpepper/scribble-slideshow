@@ -76,6 +76,8 @@
 
    ;; Here we change some base style defaults.
 
+   (current-sp-style (hash-set* (current-sp-style) 'justify #f 'debug '(linebreak)))
+
    (define talk-style
      (style #f (list 'widescreen
                      (style-transformer
@@ -180,6 +182,8 @@ and this the text that comes immediately after.
 
 This is a whole new paragraph.@margin-note{With a margin note!}
 
+@centered{This is a centered paragraph. Let's see what happens when we
+have to combine line-breaking with block alignment!}
 
 @section{Some @racketmodname[scribble/manual] examples}
 
