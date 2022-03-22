@@ -97,6 +97,7 @@
 ;; - 'white-space : #f | 'pre | 'pre-wrap | 'nowrap
 ;; - 'text-post : (Listof (Pict -> Pict))
 ;; - 'elem-post : (Listof (Pict -> Pict))
+;; - 'justify : Boolean
 
 (define (add-style s istyle #:ignore-props [ignore-props null])
   (define-values (istyle* props*)
