@@ -59,20 +59,18 @@
     (inherit compose-page)
     (super-new (initial-default-layer initial-default-layer))
 
+    (define/public (make-config title? sstyles)
+      (define aspect (hash-ref sstyles 'aspect #f))
+      (define layout (hash-ref sstyles 'layout #f))
+      (new config% (title? title?) (aspect aspect) (layout layout)))
+
     (define/override (handle-part-blocks istyle sstyles title blocks st)
-      (parameterize ((current-slide-config
-                      (new config%
-                           (title? #t)
-                           (aspect (hash-ref sstyles 'aspect #f))
-                           (layout (hash-ref sstyles 'layout #f)))))
+      (parameterize ((current-slide-config (make-config #t sstyles)))
         (super handle-part-blocks istyle sstyles title blocks st)))
 
     (define/override (emit-page title-p sstyles st layer=>picts)
-      (define layout (hash-ref sstyles 'layout #f))
       (define aspect (hash-ref sstyles 'aspect #f))
-      (define config
-        (new config% (title? (and title-p #t))
-             (aspect aspect) (layout layout)))
+      (define config (make-config (and title-p #t) sstyles))
       (parameterize ((current-slide-config config))
         (define page (compose-page (send config fullpage) st layer=>picts))
         (send config slide/full title-p aspect page)))
