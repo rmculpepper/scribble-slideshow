@@ -292,23 +292,31 @@
 
 ;; ----------------------------------------
 
+;; FIXME: make all bullets have constant width (per text-size) ??
+
+(define DEFAULT-BULLETS '(arrowhead disk circle))
+
 (define (get-bullet istyle)
-  (define level (hash-ref istyle 'itemize-level 0))
   (define text-size (hash-ref istyle 'text-size BASE-SIZE))
-  (case level
-    [(0) (bullet:arrowhead text-size)]
-    [else (bullet:disk text-size)]))
+  (define level (hash-ref istyle 'itemize-level 0))
+  (define bullets (hash-ref istyle 'itemize-bullets DEFAULT-BULLETS))
+  (define bullet (if (< level (length bullets)) (list-ref bullets level) (last bullets)))
+  (case bullet
+    [(arrowhead) (bullet:arrowhead text-size)]
+    [(disk) (bullet:circle text-size #t)]
+    [(circle) (bullet:circle text-size #f)]
+    [else (bullet:circle text-size #f)]))
 
 (define (bullet:arrowhead text-size)
   #;(arrowhead (* 2/3 text-size) 0)
   (define SIZE (* 1/2 text-size))
   (define LIFT (* 5/8 #;3/5 text-size))
   (lift-above-baseline (arrowhead SIZE 0) LIFT))
-(define (bullet:disk text-size)
+(define (bullet:circle text-size fill?)
   #;(disk (* 1/4 text-size))
   (define SIZE (* 1/3 text-size))
   (define LIFT (* 1/2 text-size))
-  (lift-above-baseline (disk SIZE) LIFT))
+  (lift-above-baseline (if fill? (disk SIZE) (circle SIZE)) LIFT))
 
 (define (get-bullet-sep istyle)
   (define text-size (hash-ref istyle 'text-size BASE-SIZE))
