@@ -217,7 +217,8 @@
   (define bullet-w (apply max 0 (map pict-width bullets)))
   (define bullet-sep (get-bullet-sep istyle))
   (define sub-width (- (hash-ref istyle 'block-width +inf.0) bullet-w bullet-sep))
-  (let ([istyle (hash-set istyle 'block-width sub-width)])
+  (let ([istyle (hash-set* istyle 'block-width sub-width
+                           'itemize-level (add1 (hash-ref istyle 'itemize-level 0)))])
     (append-blocks (get-block-sep istyle)
                    (for/list ([bullet (in-list bullets)] [flow (in-list flows)])
                      (htl-append bullet-sep
@@ -292,8 +293,22 @@
 ;; ----------------------------------------
 
 (define (get-bullet istyle)
+  (define level (hash-ref istyle 'itemize-level 0))
   (define text-size (hash-ref istyle 'text-size BASE-SIZE))
-  (arrowhead (* 2/3 text-size) 0))
+  (case level
+    [(0) (bullet:arrowhead text-size)]
+    [else (bullet:disk text-size)]))
+
+(define (bullet:arrowhead text-size)
+  #;(arrowhead (* 2/3 text-size) 0)
+  (define SIZE (* 1/2 text-size))
+  (define LIFT (* 5/8 #;3/5 text-size))
+  (lift-above-baseline (arrowhead SIZE 0) LIFT))
+(define (bullet:disk text-size)
+  #;(disk (* 1/4 text-size))
+  (define SIZE (* 1/3 text-size))
+  (define LIFT (* 1/2 text-size))
+  (lift-above-baseline (disk SIZE) LIFT))
 
 (define (get-bullet-sep istyle)
   (define text-size (hash-ref istyle 'text-size BASE-SIZE))
