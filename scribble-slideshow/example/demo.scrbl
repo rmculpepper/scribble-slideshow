@@ -76,7 +76,7 @@
 
    ;; Here we change some base style defaults.
 
-   (current-sp-style (hash-set* (current-sp-style) 'justify #f 'debug '(linebreak)))
+   (current-sp-style (hash-set* (current-sp-style) 'justify #t 'debug '(linebreak)))
 
    (define talk-style
      (style #f (list 'widescreen
@@ -130,7 +130,8 @@ On the left, we have some text. It says a few things.
 }
 
 @column[#:width 2/3]{
-On the right, we have more text.
+On the right, we have more text.@(linebreak)
+With an explicit linebreak.
 
 It says @bold{more} things, things that aren't said on the left.
 
@@ -160,8 +161,8 @@ On the left, we have some text. It says a few things.
 }
 
 @in-layer[#:layer right-layer]{
-
-On the right, we have more text.
+On the right, we have more text.@(linebreak)
+With an explicit linebreak.
 
 It says @bold{more} things, things that aren't said on the left.
 
