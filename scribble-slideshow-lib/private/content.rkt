@@ -143,7 +143,8 @@
 (define reversed-newline-items
   ;; Don't allow break at Glue, only at final Penalty.  (I think this
   ;; only really matters if break forced by overfull line.)
-  (reverse (list disallow-break (Glue blank/eol 0 #e1e6 0) force-break)))
+  ;; FIXME: use +inf.0 instead?
+  (reverse (list disallow-break (Glue blank/eol 0 +inf.0 0) force-break)))
 
 ;; ------------------------------------------------------------
 
@@ -182,7 +183,7 @@
                 (cons (make-box (base-content->pict seg istyle)) acc)]))]
       [(? symbol? s) (loop (content-symbol->string s) acc istyle)]
       [(? pict? p) (cons (make-box (base-content->pict p istyle)) acc)]
-      [(s:element 'newline '("\n")) (cons 'nl acc)]
+      [(s:element 'newline '("\n")) (append reversed-newline-items acc)]
       [(s:element style content)
        (loop content acc (add-style style istyle))]
       ;; multiarg-element -- ??
@@ -240,7 +241,7 @@
       [(center) (values (/ dw 2) (/ dw 2))]
       [(right) (values dw 0)]
       [else (values 0 dw)]))
-  (inset (frame #:color color (inset p ldw 0 rdw 0)) (- ldw) 0 (- rdw) 0))
+  (inset (frame #:segment 4 #:color color (inset p ldw 0 rdw 0)) (- ldw) 0 (- rdw) 0))
 
 ;; ------------------------------------------------------------
 ;; Greedy linebreaking
