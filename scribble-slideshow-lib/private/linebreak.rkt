@@ -10,23 +10,62 @@
 
 ;; References:
 ;; - Breaking paragraphs into lines, Donald Knuth and Michael Plass
-;; - The errors of TEX, Donald Knuth
+;; - The errors of TEX, Donald Knuth (abbreviated TEOT below)
 
-(define (get-line-breaks items targetw #:p [p P-TOLERANCE])
-  (define para (new para% (items items) (targetw targetw) (p-tolerance p)))
-  (send para go))
+(define (get-line-breaks items targetw #:p [p #f])
+  (send kp-linebreaker get-line-breaks items targetw #:p p))
+
+(define STRETCH 1/2)        ;; default whitespace stretch factor
+(define SHRINK 1/3)         ;; default whitespace shrink factor
+
+(define ALPHA 3000)         ;; default demerit for consecutive hyphenated lines (p1163)
+(define GAMMA 3000)         ;; default demerit for fitness-class differences (p1163)
+(define HYPHEN-PENALTY 50)  ;; default penalty for hyphen (p1163)
+(define LINE-PENALTY 1)     ;; default penalty for each line (TEOT p631)
+(define P-TOLERANCE 1.26)   ;; default tolerance (p1163)
+
+;; ------------------------------------------------------------
+
+(define kp-linebreaker%
+  (class object%
+    (init-field [consecutive-hyphen-demerit ALPHA]
+                [fitness-class-demerit GAMMA]
+                [hyphen-penalty HYPHEN-PENALTY]
+                [line-penalty LINE-PENALTY]
+                [p-tolerance P-TOLERANCE]
+                [ws-stretch STRETCH]
+                [ws-shrink SHRINK])
+    (super-new)
+
+    (define/public (make-whitespace val w)
+      (Glue val w (* w ws-stretch) (* w ws-shrink)))
+
+    (define/public (make-hyphen val w)
+      (Penalty val w hyphen-penalty #t))
+
+    ;; --------------------
+
+    (define/public (get-line-breaks items targetw #:p [p p-tolerance])
+      (define para
+        (new kp-para% (config this) (items items) (targetw targetw) (p-tolerance (or p p-tolerance))))
+      (send para go))
+    ))
+
+(define kp-linebreaker (new kp-linebreaker%))
 
 ;; ------------------------------------------------------------
 
 ;; An Item is one of
 ;; - (Box Any Real)
 ;; - (Glue Any Real Real Real)
-;; - (Penalty Any Real ExtendedReal)
+;; - (Penalty Any Real ExtendedReal Boolean)  -- flagged? means hyphen
 (struct Item (value width) #:prefab)
 (struct Box Item () #:prefab)
 (struct Glue Item (stretch shrink) #:prefab)
 (struct Penalty Item (penalty flagged?) #:prefab)
 
+(define (Item-width* it)
+  (match it [(? Penalty?) 0] [_ (Item-width it)]))
 (define (Item-stretch it)
   (match it [(Glue _ _ stretch _) stretch] [_ 0]))
 (define (Item-shrink it)
@@ -36,45 +75,48 @@
 (define (Item-flagged? it)
   (match it [(Penalty _ _ _ flagged?) flagged?] [_ #f]))
 
+(define (Item-stretch-fin it)
+  (let ([y (Item-stretch it)]) (if (= y +inf.0) 0 y)))
+(define (Item-stretch-inf it)
+  (let ([y (Item-stretch it)]) (if (= y +inf.0) 1 0)))
+
 ;; ------------------------------------------------------------
 
-(define HYPHEN-PENALTY 50)  ;; default penalty for hyphen (p1163)
-(define ALPHA 1000) ;; demerit for consecutive hyphenated lines (p1163)
-(define GAMMA 1000) ;; demerit for fitness-class differences (p1163)
-
-(define P-TOLERANCE 1.26)
-(define LINE-PENALTY 1)
-
-(define para%
+(define kp-para%
   (class object%
-    (init-field items     ;; (Vectorof Item)
+    (init-field config    ;; linebreaker% instance
+                items     ;; (Vectorof Item)
                 targetw   ;; PositiveReal
-                [p-tolerance P-TOLERANCE]
-                [linepenalty LINE-PENALTY]) ;; NNReal
+                p-tolerance)
+    (define line-penalty (get-field line-penalty config))
+    (define ALPHA (get-field consecutive-hyphen-demerit config))
+    (define GAMMA (get-field fitness-class-demerit config))
+    (define HYPHEN-PENALTY (get-field hyphen-penalty config))
     (super-new)
 
     ;; p1156: items must start with Box and end with (Penalty _ _ -inf.0)
 
-    ;; "w" = width
-    ;; "y" = stretchability
-    ;; "z" = shrinkability
+    ;; "w" = width (finite)
+    ;; "y" = stretchability (finite or +inf.0)
+    ;; "z" = shrinkability (finite)
 
     (define len (vector-length items))      ;; "m" in BPL
-    (define Sw (cumsum Item-width items))   ;; (Vectorof Real), sum of previous w (p1157)
-    (define Sy (cumsum Item-stretch items)) ;; (Vectorof Real), sum of previous y
+    (define Sw (cumsum Item-width* items))  ;; (Vectorof Real), sum of previous w (p1157)
+    (define Syf (cumsum Item-stretch-fin items)) ;; (Vectorof Real), sum of previous y (finite parts)
+    (define Syi (cumsum Item-stretch-inf items)) ;; (Vectorof Nat), sum of previous y (# of +inf.0)
     (define Sz (cumsum Item-shrink items))  ;; (Vectorof Real), sum of previous z
 
     (define/public-final (get i) (vector-ref items i))
-    (define/public-final (get-w i) (Item-width (get i)))
-    (define/public-final (get-y i) (Item-stretch (get i)))
-    (define/public-final (get-z i) (Item-shrink (get i)))
     (define/public-final (get-p i) (Item-penalty (get i)))
     (define/public-final (get-f i) (and (>= i 0) (Item-flagged? (get i))))
 
     (define/public-final (sum-w i j) (csumvec-diff Sw i j))
-    (define/public-final (sum-y i j) (csumvec-diff Sy i j))
+    (define/public-final (sum-y i j)
+      (+ (csumvec-diff Syf i j)
+         (if (zero? (csumvec-diff Syi i j)) 0 +inf.0)))
     (define/public-final (sum-z i j) (csumvec-diff Sz i j))
 
+    ;; legal-break? : Index -> Boolean
     (define/public-final (legal-break? i) ;; p1125
       ;; A linebreak is legal only at
       ;; - a Glue item whose predecessor is a Box
@@ -84,23 +126,26 @@
         [(? Glue?) (and (> i 0) (Box? (get (sub1 i))))]
         [_ #f]))
 
+    ;; forced-break? : Index -> Boolean
     (define/public-final (forced-break? i)
       (match (get i)
         [(Penalty _ _ -inf.0 _) #t]
         [_ #f]))
 
+    ;; after : Index -> Index
     (define/public-final (after a)  ;; p1125, p1157
       (let loop ([i (add1 a)])
         (match (and (< i len) (get i))
           [(or #f (? Box?) (Penalty _ _ -inf.0 _)) i]
           [_ (loop (add1 i))])))
 
+    ;; line-actual-length : Index Index -> Real
     (define/public (line-actual-length a b) ;; p1126
       (+ (sum-w a b)
          (let ([itemb (get b)])
            (if (Penalty? itemb) (Item-width itemb) 0))))
 
-    ;; line-adjustment-ratio : ... -> (U Real #f); p1126
+    ;; line-adjustment-ratio : Index Index -> ExtReal; p1126
     (define/public (line-adjustment-ratio a b)
       (define linew (line-actual-length a b))
       (define stretch (sum-y a b))
@@ -111,15 +156,17 @@
             [(> linew targetw)
              (if (> shrink 0) (/ (- targetw linew) shrink) -inf.0)]))
 
+    ;; line-badness : Index Index -> ExtReal
     (define/public (line-badness a b) ;; p1127, \beta
       (adjustment-ratio->badness (line-adjustment-ratio a b)))
 
+    ;; adjustment-ratio->badness : ExtReal -> NNExtReal
     (define/public (adjustment-ratio->badness r) ;; p1127, \beta
       (cond [(< r -1) +inf.0]
             [else (* 100 (expt (abs r) 3))]))
 
-    (define/public (line-demerits anode b r bfitness) ;; p1128, \delta
-      ;; See also "The errors of TEX", p631.
+    ;; line-demerits : Node Index ExtReal FitnessClass -> ExtReal
+    (define/public (line-demerits anode b r bfitness) ;; p1128, \delta; TEOT p631
       (define a (node-position anode))
       (define aafter (node-after anode))
       (define badness (adjustment-ratio->badness r))
@@ -127,15 +174,17 @@
       (define alpha (if (and (get-f a) (get-f b)) ALPHA 0))
       (define gamma (if (> (abs (- (node-fitness anode) bfitness)) 1) GAMMA 0))
       (cond [(>= penalty 0)
-             (+ (sqr (+ linepenalty badness penalty)) alpha gamma)]
+             (+ (sqr (+ line-penalty badness)) (sqr penalty) alpha gamma)]
             [(< -inf.0 penalty 0)
-             (+ (sqr (+ linepenalty badness)) (- (sqr penalty)) alpha gamma)]
+             (+ (sqr (+ line-penalty badness)) (- (sqr penalty)) alpha gamma)]
             [else ;; penalty = -inf.0
-             (+ (sqr (+ linepenalty badness)) alpha gamma)]))
+             (+ (sqr (+ line-penalty)) alpha gamma)]))
 
+    ;; line-fitness-class : Index Index -> FitnessClass
     (define/public (line-fitness-class a b) ;; p1128
       (adjustment-ratio->class (line-adjustment-ratio a b)))
 
+    ;; adjustment-ratio->class : ExtReal -> FitnessClass
     (define/public (adjustment-ratio->class r)
       (cond [(< r -0.5) 0] ;; tight
             [(< r 0.5) 1]  ;; normal
@@ -202,7 +251,7 @@
       (define bdemerits (line-demerits anode b r bfitness))
       (node b (after b) (add1 aline) r bfitness (+ atotdemerits bdemerits) anode))
 
-    (define (best-breaks breaks)
+    (define/private (best-breaks breaks)
       ;; (p1159) Select at most one break per fitness, since we fix q=0.
       (for/fold ([keep null])
                 ([fitness (in-range 0 4)])
