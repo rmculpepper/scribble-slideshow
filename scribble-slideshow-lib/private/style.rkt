@@ -5,6 +5,7 @@
 (require racket/match
          racket/list
          racket/hash
+         racket/class
          (prefix-in s: scribble/core)
          (prefix-in s: scribble/html-properties)
          (prefix-in s: scribble/latex-properties)
@@ -18,6 +19,11 @@
 
 (define (hash-cons h k v) (hash-set h k (cons v (hash-ref h k null))))
 (define (hash-remove* h ks) (for/fold ([h h]) ([k (in-list ks)]) (hash-remove h k)))
+
+(define stylist<%>
+  (interface ()
+
+    ))
 
 ;; ============================================================
 ;; IStyle (aka SP-Style)
