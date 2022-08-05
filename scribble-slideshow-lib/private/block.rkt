@@ -303,19 +303,19 @@
 ;; add*-block-style : Style IStyle NStyle [#:kind Symbol] -> (values IStyle NStyle)
 (define (add*-block-style s istyle [nstyle #hasheq()] #:kind [kind #f])
   (define-values (istyle1 nstyle1) (add*-style s istyle nstyle #:kind kind))
-  (hash-move istyle1 nstyle1 '(bgcolor))
-  #;(values istyle1 nstyle1))
+  (hash-move istyle1 nstyle1 '(bgcolor)))
 
 ;; call/block-style : IStyle NStyle (IStyle -> Pict) -> Pict
 (define (call/block-style istyle nstyle proc)
   (match-define (list ml mt mr mb) (or (hash-ref nstyle 'block-margin #f) '(0 0 0 0)))
   (match-define (list pl pt pr pb) (or (hash-ref nstyle 'block-padding #f) '(0 0 0 0)))
   (define istyle* (istyle-adjust-block-width istyle (- 0 ml mr pl pr)))
-  (define base-p (proc istyle*))
-  (define base-p* (apply-base-block-styles base-p istyle* nstyle))
-  (define padded-p (inset base-p* pl pt pr pb))
-  (define padded-p* (apply-padded-block-styles padded-p istyle* nstyle))
-  (inset padded-p* ml mt mr mb))
+  (let* ([p (proc istyle*)]
+         [p (apply-base-block-styles p istyle* nstyle)]
+         [p (inset p pl pt pr pb)]
+         [p (apply-padded-block-styles p istyle* nstyle)]
+         [p (inset p ml mt mr mb)])
+    p))
 
 ;; call/block-style/rblo : IStyle NStyle (IStyle -> Pict) -> RenderedBlock
 (define (call/block-style/rblo istyle nstyle proc)
