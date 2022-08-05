@@ -25,9 +25,8 @@
     (cond [(hash-ref h1 key #f)
            => (lambda (v1)
                 (values (hash-remove h1 key)
-                        (cond [(hash-ref h2 key #f)
-                               (hash-set h2 key v1)]
-                              [else h2])))]
+                        (cond [(hash-ref h2 key #f) h2]
+                              [else (hash-set h2 key v1)])))]
           [else (values h1 h2)])))
 
 ;; ============================================================
@@ -156,7 +155,7 @@
 ;; istyle-stylemap-ref : IStyle Any Default -> (U StyleDiffs Default)
 ;; Lookup a style name (string or symbol) or named handler hash.
 (define (istyle-stylemap-ref istyle style-name [default null])
-  (define stylemap (hash-ref istyle 'styles #hash()))
+  (define stylemap (hash-ref istyle 'styles))
   (hash-ref stylemap style-name default))
 
 
@@ -177,18 +176,20 @@
   (define handlers (istyle-stylemap-ref istyle `(handlers ,kind) #hasheq()))
   (match s
     [(s:style name props)
-     (let-values ([(istyle nstyle) (add*-simple-style s istyle nstyle #:handlers handlers)])
-       (for/fold ([istyle istyle] [nstyle nstyle])
-                 ([prop (in-list props)])
-         (add*-style-prop prop istyle nstyle #:handlers handlers)))]
+     (define-values (istyle1 nstyle1)
+       (add*-simple-style name istyle nstyle #:handlers handlers))
+     (for/fold ([istyle istyle1] [nstyle nstyle1])
+               ([prop (in-list props)])
+       (add*-style-prop prop istyle nstyle #:handlers handlers))]
     [s (add*-simple-style s istyle nstyle #:handlers handlers)]))
 
 ;; add*-simple-style : (U #f Symbol String) IStyle NStyle -> (values IStyle NStyle)
 (define (add*-simple-style style-name istyle nstyle #:handlers handlers)
-  (define stylemap (hash-ref istyle 'styles '#hasheq()))
   (cond [(eq? style-name #f) (values istyle nstyle)]
         [(istyle-stylemap-ref istyle style-name #f)
-         => (lambda (diffs) (styles-update istyle nstyle diffs))]
+         => (lambda (diffs)
+              (eprintf "\nfound style name ~s: ~v\n" style-name diffs)
+              (styles-update istyle nstyle diffs))]
         [(hash-ref handlers style-name #f)
          => (lambda (diffs) (styles-update istyle nstyle diffs))]
         [else

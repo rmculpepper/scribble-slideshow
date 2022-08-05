@@ -303,7 +303,8 @@
 ;; add*-block-style : Style IStyle NStyle [#:kind Symbol] -> (values IStyle NStyle)
 (define (add*-block-style s istyle [nstyle #hasheq()] #:kind [kind #f])
   (define-values (istyle1 nstyle1) (add*-style s istyle nstyle #:kind kind))
-  (hash-move istyle1 nstyle1 '(bgcolor)))
+  (hash-move istyle1 nstyle1 '(bgcolor))
+  #;(values istyle1 nstyle1))
 
 ;; call/block-style : IStyle NStyle (IStyle -> Pict) -> Pict
 (define (call/block-style istyle nstyle proc)
@@ -314,7 +315,7 @@
   (define base-p* (apply-base-block-styles base-p istyle* nstyle))
   (define padded-p (inset base-p pl pt pr pb))
   (define padded-p* (apply-padded-block-styles padded-p istyle* nstyle))
-  (inset padded-p ml mt mr mb))
+  (inset padded-p* ml mt mr mb))
 
 ;; call/block-style/rblo : IStyle NStyle (IStyle -> Pict) -> RenderedBlock
 (define (call/block-style/rblo istyle nstyle proc)

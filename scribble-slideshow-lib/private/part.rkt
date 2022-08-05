@@ -114,7 +114,6 @@
     (define/public (handle-part istyle0 p in-st)
       (match-define (part _ _ title0 style _ blocks parts) p)
       (define-values (istyle nstyle) (add*-style style istyle0 #:kind 'slide))
-      (eprintf "\npart nstyle = ~v\n" nstyle)
       (case (hash-ref nstyle 'slide-ignore #f)
         [(ignore*)
          (values in-st (lambda (post) post))]

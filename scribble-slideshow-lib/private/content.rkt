@@ -196,6 +196,7 @@
 
 (define (add*-content-style s istyle0)
   (define-values (istyle nstyle) (add*-style s istyle0))
+  (eprintf "\nacs s = ~v\nistyle = ~v\n" s (hash-remove istyle 'styles))
   istyle)
 
 ;; hyphenations : String IStyle -> (Listof Item)

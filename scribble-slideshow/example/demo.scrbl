@@ -170,7 +170,6 @@ It says @bold{more} things, things that aren't said on the left.
 [things few-things more-things]
 ]}
 
-
 @section{More text formatting}
 
 Subscripts and superscripts work, so you can talk about β@elem[#:style
