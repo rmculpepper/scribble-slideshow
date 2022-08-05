@@ -33,7 +33,7 @@
 
 ;; flow->pict : Flow IStyle -> Pict
 (define (flow->pict blocks istyle)
-  (fix-floats (render-flow blocks istyle)))
+  (fix-floats (render-flow blocks istyle) istyle))
 
 ;; render-flow : Flow IStyle -> RenderedBlock
 (define (render-flow blocks istyle)
@@ -49,14 +49,23 @@
 (struct rblo (left right) #:prefab)
 
 ;; rendered-block-width : RenderedBlock -> Real
-(define (rendered-block-width p)
-  (if (pair? p) (max (if (car p) (pict-width (car p)) 0) (pict-width (cdr p))) (pict-width p)))
-
-;; fix-floats : RenderedBlock -> Pict
-(define (fix-floats rb)
+(define (rendered-block-width rb)
   (match rb
     [(rblo left right)
-     (rt-superimpose (or left (blank)) right)]
+     (max (if left (pict-width left) 0) (pict-width right))]
+    [(? pict? p) (pict-width p)]))
+
+;; fix-floats : RenderedBlock IStyle-> Pict
+(define (fix-floats rb istyle)
+  (match rb
+    [(rblo left right)
+     (define w (get-block-width istyle))
+     (cond [(< w +inf.0)
+            (rt-superimpose
+             (or left (blank))
+             (let ([rw (pict-width right)])
+               (inset rw (- w rw) 0 0 0)))]
+           [else (ht-append (get-block-sep istyle) (or left (blank)) right)])]
     [(? pict? p) p]))
 
 ;; append-blocks : PositiveReal (Listof RenderedBlock) -> RenderedBlock
@@ -109,22 +118,18 @@
 ;; ------------------------------------------------------------
 ;; Compound-paragraph
 
-;; render-compound-paragraph : Style Flow IStyle -> RenderedBlock
+;; render-compound-paragraph : Style Flow IStyle -> Pict
 (define (render-compound-paragraph style blocks istyle0)
   (define-values (istyle nstyle) (add*-block-style style istyle0 #:kind 'compound-paragraph))
-  (call/block-style/rblo istyle nstyle
-    (lambda (istyle)
-      (append-blocks (get-block-sep istyle)
-                     (for/list ([block (in-list blocks)])
-                       (render-block block istyle))))))
+  (call/block-style istyle nstyle (lambda (istyle) (flow->pict blocks istyle))))
 
 ;; ------------------------------------------------------------
 ;; Nested-flow
 
-;; render-nested-flow : Style Flow IStyle -> Pict
+;; render-nested-flow : Style Flow IStyle -> RenderedBlock
 (define (render-nested-flow style flow istyle0)
   (define-values (istyle nstyle) (add*-block-style style istyle0 #:kind 'nested-flow))
-  (call/block-style istyle nstyle (lambda (istyle) (flow->pict flow istyle))))
+  (call/block-style istyle nstyle (lambda (istyle) (render-flow flow istyle))))
 
 ;; ------------------------------------------------------------
 ;; Itemization
@@ -281,7 +286,7 @@
 
 ;; apply-table-cell-styles : RenderedBlock Real IStyle NStyle -> Pict
 (define (apply-table-cell-styles rb width istyle nstyle)
-  (let* ([p (if (pair? rb) (or (car rb) (blank)) rb)]
+  (let* ([p (match rb [(rblo left right) (or left (blank))] [_ rb])]
          [p (let ([dwidth (- width (pict-width p))])
               (case (hash-ref nstyle 'cell-halign 'left)
                 [(left) (inset p 0 0 dwidth 0)]
@@ -305,24 +310,24 @@
   (define-values (istyle1 nstyle1) (add*-style s istyle nstyle #:kind kind))
   (hash-move istyle1 nstyle1 '(bgcolor)))
 
-;; call/block-style : IStyle NStyle (IStyle -> Pict) -> Pict
+;; call/block-style : IStyle NStyle (IStyle -> RenderedBlock) -> RenderedBlock
 (define (call/block-style istyle nstyle proc)
   (match-define (list ml mt mr mb) (or (hash-ref nstyle 'block-margin #f) '(0 0 0 0)))
   (match-define (list pl pt pr pb) (or (hash-ref nstyle 'block-padding #f) '(0 0 0 0)))
   (define istyle* (istyle-adjust-block-width istyle (- 0 ml mr pl pr)))
-  (let* ([p (proc istyle*)]
-         [p (apply-base-block-styles p istyle* nstyle)]
-         [p (inset p pl pt pr pb)]
-         [p (apply-padded-block-styles p istyle* nstyle)]
-         [p (inset p ml mt mr mb)])
-    p))
-
-;; call/block-style/rblo : IStyle NStyle (IStyle -> Pict) -> RenderedBlock
-(define (call/block-style/rblo istyle nstyle proc)
-  (define p (call/block-style istyle nstyle proc))
-  (case (and (hash-ref istyle 'block-halign #f))
-    [(float-right) (rblo #f p)]
-    [else p]))
+  (define (apply-all p)
+    (let* ([p (apply-base-block-styles p istyle* nstyle)]
+           [p (inset p pl pt pr pb)]
+           [p (apply-padded-block-styles p istyle* nstyle)]
+           [p (inset p ml mt mr mb)])
+      p))
+  (match (proc istyle*)
+    [(? pict? p)
+     (cond [(eq? (hash-ref istyle 'block-halign #f) 'float-right)
+            (rblo #f (apply-all p))]
+           [else (apply-all p)])]
+    [(rblo left right)
+     (rblo (and left (apply-all left)) right)]))
 
 ;; apply-base-block-styles : Pict IStyle NStyle -> Pict
 (define (apply-base-block-styles p istyle nstyle)
