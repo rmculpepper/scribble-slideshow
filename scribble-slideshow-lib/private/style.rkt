@@ -187,9 +187,7 @@
 (define (add*-simple-style style-name istyle nstyle #:handlers handlers)
   (cond [(eq? style-name #f) (values istyle nstyle)]
         [(istyle-stylemap-ref istyle style-name #f)
-         => (lambda (diffs)
-              (eprintf "\nfound style name ~s: ~v\n" style-name diffs)
-              (styles-update istyle nstyle diffs))]
+         => (lambda (diffs) (styles-update istyle nstyle diffs))]
         [(hash-ref handlers style-name #f)
          => (lambda (diffs) (styles-update istyle nstyle diffs))]
         [else
