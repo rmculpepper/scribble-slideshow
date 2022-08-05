@@ -313,7 +313,7 @@
   (define istyle* (istyle-adjust-block-width istyle (- 0 ml mr pl pr)))
   (define base-p (proc istyle*))
   (define base-p* (apply-base-block-styles base-p istyle* nstyle))
-  (define padded-p (inset base-p pl pt pr pb))
+  (define padded-p (inset base-p* pl pt pr pb))
   (define padded-p* (apply-padded-block-styles padded-p istyle* nstyle))
   (inset padded-p* ml mt mr mb))
 
@@ -321,7 +321,7 @@
 (define (call/block-style/rblo istyle nstyle proc)
   (define p (call/block-style istyle nstyle proc))
   (case (and (hash-ref istyle 'block-halign #f))
-    [(float-right) (cons #f p)]
+    [(float-right) (rblo #f p)]
     [else p]))
 
 ;; apply-base-block-styles : Pict IStyle NStyle -> Pict
