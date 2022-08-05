@@ -366,8 +366,8 @@
     ;; for margin-par:
     "refpara" `((istyle block-halign right scale 3/4))
     ;; ie, "procedure", "syntax", etc in defproc, defform, etc
-    "RBackgroundLabel" `((istyle block-halign float-right inset-to-width? #f
-                                 text-base modern color "darkgray" scale 2/3))
+    "RBackgroundLabel" `((nstyle float right)
+                         (istyle block-halign right text-base modern color "darkgray"))
     'command '()
     'multicommand '()
     'never-indents '()

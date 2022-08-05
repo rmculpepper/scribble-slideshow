@@ -178,14 +178,20 @@
       ;; multiarg-element -- ??
       ;; render-element -- ??
       [(? s:traverse-element? e)
-       (loop (s:traverse-element-content e (current-resolve-info)) acc istyle)]
+       (loop (parameterize ((current-istyle istyle))
+               (s:traverse-element-content e (current-resolve-info)))
+             acc istyle)]
       [(? s:delayed-element? e)
        (cond [(current-resolve-info)
-              => (lambda (ri) (loop (s:delayed-element-content e ri) acc istyle))]
+              => (lambda (ri) (loop (parameterize ((current-istyle istyle))
+                                      (s:delayed-element-content e ri))
+                                    acc istyle))]
              [else (loop ((s:delayed-element-plain e)) acc istyle)])]
       [(? s:part-relative-element? e)
        (cond [(current-resolve-info)
-              => (lambda (ri) (loop (s:part-relative-element-content e ri) acc istyle))]
+              => (lambda (ri) (loop (parameterize ((current-istyle istyle))
+                                      (s:part-relative-element-content e ri))
+                                    acc istyle))]
              [else (loop ((s:part-relative-element-plain e)) acc istyle)])]
       [(? pict-convertible?) (loop (pict-convert content) acc istyle)]
       [(? list? content)
