@@ -46,10 +46,6 @@
 (define (in-layer #:layer lay . flow)
   (s:compound-paragraph (s:style #f (list lay)) (s:decode-flow flow)))
 
-(define (in-style #:style mstyles . flow)
-  (define (add-styles istyle) (merge-styles istyle mstyles))
-  (s:compound-paragraph (s:style #f (list (style-transformer add-styles))) (s:decode-flow flow)))
-
 ;; ============================================================
 ;; Slide making
 

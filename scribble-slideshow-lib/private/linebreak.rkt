@@ -12,8 +12,32 @@
 ;; - Breaking paragraphs into lines, Donald Knuth and Michael Plass
 ;; - The errors of TEX, Donald Knuth (abbreviated TEOT below)
 
-(define (get-line-breaks items targetw #:p [p #f])
-  (send kp-linebreaker get-line-breaks items targetw #:p p))
+;; ------------------------------------------------------------
+
+;; An Item is one of
+;; - (Box Any Real)
+;; - (Glue Any Real Real Real)
+;; - (Penalty Any Real ExtendedReal Boolean)  -- flagged? means hyphen
+(struct Item (value width) #:prefab)
+(struct Box Item () #:prefab)
+(struct Glue Item (stretch shrink) #:prefab)
+(struct Penalty Item (penalty flagged?) #:prefab)
+
+(define (Item-width* it)
+  (match it [(? Penalty?) 0] [_ (Item-width it)]))
+(define (Item-stretch it)
+  (match it [(Glue _ _ stretch _) stretch] [_ 0]))
+(define (Item-shrink it)
+  (match it [(Glue _ _ _ shrink) shrink] [_ 0]))
+(define (Item-penalty it)
+  (match it [(Penalty _ _ penalty _) penalty] [_ 0]))
+(define (Item-flagged? it)
+  (match it [(Penalty _ _ _ flagged?) flagged?] [_ #f]))
+
+(define (Item-stretch-fin it)
+  (let ([y (Item-stretch it)]) (if (= y +inf.0) 0 y)))
+(define (Item-stretch-inf it)
+  (let ([y (Item-stretch it)]) (if (= y +inf.0) 1 0)))
 
 (define STRETCH 1/2)        ;; default whitespace stretch factor
 (define SHRINK 1/3)         ;; default whitespace shrink factor
@@ -24,7 +48,13 @@
 (define LINE-PENALTY 1)     ;; default penalty for each line (TEOT p631)
 (define P-TOLERANCE 1.26)   ;; default tolerance (p1163)
 
+
+
+
 ;; ------------------------------------------------------------
+
+(define (get-line-breaks items targetw #:p [p #f])
+  (send kp-linebreaker get-line-breaks items targetw #:p p))
 
 (define kp-linebreaker%
   (class object%
@@ -52,33 +82,6 @@
     ))
 
 (define kp-linebreaker (new kp-linebreaker%))
-
-;; ------------------------------------------------------------
-
-;; An Item is one of
-;; - (Box Any Real)
-;; - (Glue Any Real Real Real)
-;; - (Penalty Any Real ExtendedReal Boolean)  -- flagged? means hyphen
-(struct Item (value width) #:prefab)
-(struct Box Item () #:prefab)
-(struct Glue Item (stretch shrink) #:prefab)
-(struct Penalty Item (penalty flagged?) #:prefab)
-
-(define (Item-width* it)
-  (match it [(? Penalty?) 0] [_ (Item-width it)]))
-(define (Item-stretch it)
-  (match it [(Glue _ _ stretch _) stretch] [_ 0]))
-(define (Item-shrink it)
-  (match it [(Glue _ _ _ shrink) shrink] [_ 0]))
-(define (Item-penalty it)
-  (match it [(Penalty _ _ penalty _) penalty] [_ 0]))
-(define (Item-flagged? it)
-  (match it [(Penalty _ _ _ flagged?) flagged?] [_ #f]))
-
-(define (Item-stretch-fin it)
-  (let ([y (Item-stretch it)]) (if (= y +inf.0) 0 y)))
-(define (Item-stretch-inf it)
-  (let ([y (Item-stretch it)]) (if (= y +inf.0) 1 0)))
 
 ;; ------------------------------------------------------------
 

@@ -26,7 +26,7 @@
 (define layer<%>
   (interface ()
     get-z        ;; -> ExtendedReal
-    update-style ;; StyleHash -> StyleHash
+    update-style ;; IStyle -> IStyle
 
     ;; type LayerPre
 
@@ -52,12 +52,11 @@
     (init-field z style)
     (super-new)
 
-    ;; FIXME: change style field to upstyle (SPStyle -> SPStyle) ??
-
     (define/public (get-z) z)
 
-    (define/public (update-style istyle)
-      (merge-styles istyle style))
+    (define/public (update-style istyle0)
+      (define-values (istyle _ns) (add*-style style istyle0 #:kind 'layer))
+      istyle)
 
     (abstract update-pre)
     (abstract max-pre)

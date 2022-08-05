@@ -111,19 +111,19 @@
       (values st* (lambda (post) (for/fold ([post post]) ([f (in-list txs)]) (f post)))))
 
     ;; handle-part : IStyle Part PreState -> (values PreState PostTx)
-    (define/public (handle-part istyle p in-st)
+    (define/public (handle-part istyle0 p in-st)
       (match-define (part _ _ title0 style _ blocks parts) p)
-      (define-values (istyle* props*) (add-style* style istyle))
-      (define sstyles (add-slide-props props* (hash-ref istyle 'slide-styles (hasheq))))
-      (case (hash-ref sstyles 'ignore #f)
+      (define-values (istyle nstyle) (add*-style style istyle0 #:kind 'slide))
+      (eprintf "\npart nstyle = ~v\n" nstyle)
+      (case (hash-ref nstyle 'slide-ignore #f)
         [(ignore*)
          (values in-st (lambda (post) post))]
         [else
-         (define slide-mode (hash-ref sstyles 'mode #f))
-         (define maker (wrap-maker istyle* (or (hash-ref sstyles 'maker #f) void)))
-         (define title (if (hash-ref sstyles 'no-title #f) #f title0))
+         (define slide-mode (hash-ref nstyle 'slide-mode #f))
+         (define maker (wrap-maker istyle (or (hash-ref nstyle 'slide-maker #f) void)))
+         (define title (if (hash-ref nstyle 'slide-no-title #f) #f title0))
          (define-values (final-st ptx)
-           (handle-part* istyle* sstyles title blocks parts (get-start-state slide-mode in-st)))
+           (handle-part* istyle nstyle title blocks parts (get-start-state slide-mode in-st)))
          (values (get-end-state slide-mode in-st final-st)
                  (case slide-mode
                    [(next)    (lambda (post) (maker) (ptx post))]
@@ -132,11 +132,11 @@
                    [(digress) (lambda (post) (maker) (ptx (fresh-post-state)) post)]))]))
 
     ;; handle-part* : __ -> (values PreState PostTx)
-    (define/public (handle-part* istyle sstyles title blocks parts start-st)
+    (define/public (handle-part* istyle nstyle title blocks parts start-st)
       (define bs-tx
-        (case (hash-ref sstyles 'ignore #f)
+        (case (hash-ref nstyle 'slide-ignore #f)
           [(ignore) (lambda (post) post)]
-          [else (handle-part-blocks istyle sstyles title blocks start-st)]))
+          [else (handle-part-blocks istyle nstyle title blocks start-st)]))
       (define-values (final-st subs-tx) (handle-parts istyle parts start-st))
       (values final-st (lambda (post) (subs-tx (bs-tx post)))))
 
@@ -152,8 +152,8 @@
     (define/public (fresh-post-state) (cons #f (hasheqv)))
 
     ;; handle-part-blocks : __ -> PostTx
-    (define/public (handle-part-blocks istyle sstyles title blocks st)
-      (define aspect (hash-ref sstyles 'aspect #f))
+    (define/public (handle-part-blocks istyle nstyle title blocks st)
+      (define aspect (hash-ref nstyle 'aspect #f))
       (define layer=>blocks (split-blocks-by-layer blocks initial-default-layer))
       (define layer=>pict
         (for/fold ([layer=>pict (hasheq)])
@@ -169,7 +169,7 @@
           (for/fold ([layer=>picts in-layer=>picts])
                     ([(lay body-p) (in-hash layer=>pict)])
             (hash-append layer=>picts lay (list body-p))))
-        (emit-page title-p sstyles st layer=>picts)
+        (emit-page title-p nstyle st layer=>picts)
         (cons title-p layer=>picts))
       render)
 
@@ -208,48 +208,18 @@
   (parameterize ((current-istyle istyle)) (maker)))
 
 ;; ------------------------------------------------------------
-
 ;; Slide Styles
 
-;; A SlideStyles is a Hasheq with the following keys:
-;; - layout : 'auto | 'center | 'top | 'tall
-;; - aspect : 'widescreen | 'fullscreen | #f
-;; - mode   : 'next | 'alt | #f | 'digress
-;; - ignore : 'ignore | 'ignore*
-;; - no-title : 'no-title | #f
-;; - maker : Procedure
+(struct make-slides-prop (mk)
+  #:property prop:sp-style-prop
+  (lambda (self istyle nstyle)
+    (values istyle (hash-set nstyle 'slide-maker (make-slides-prop-mk self)))))
 
-(struct make-slides-prop (mk))
+(define (get-title-istyle istyle0)
+  (define-values (istyle nstyle) (add*-style 'slide-title istyle0))
+  istyle)
 
-(define (add-slide-props props sstyles)
-  (foldl add-slide-style-prop sstyles props))
-
-;; Note: in code like `@section[#:style ???]{...}`, a string is treated as a
-;; style name, but a symbol is treated as a style property.
-
-(define (add-slide-style-prop prop sstyles)
-  (match prop
-    [(or 'auto 'center 'top 'tall) (hash-set sstyles 'layout prop)]
-    [(or 'widescreen 'fullscreen) (hash-set sstyles 'aspect prop)]
-    [(or 'next 'alt 'digress) (hash-set sstyles 'mode prop)]
-    [(or 'ignore 'ignore*) (hash-set sstyles 'ignore prop)]
-    [(or 'no-title) (hash-set sstyles 'no-title prop)]
-    [(make-slides-prop mk) (hash-set sstyles 'maker mk)]
-    ;; ----
-    ;; standard scribble part styles seem irrelevant, ignore
-    [_ sstyles]))
-
-(define slide-style-keys
-  '(auto center top tall
-    widescreen fullscreen
-    next alt digress
-    ignore ignore*
-    no-title))
-
-(define (get-title-istyle istyle)
-  (add-style 'slide-title istyle))
-
-;; ----------------------------------------
+;; ============================================================
 
 (define (hash-append h k vs)
   (hash-set h k (append (hash-ref h k null) vs)))
