@@ -211,7 +211,11 @@
     (or (hash-ref nstyle 'table-cell-styless #f)
         (make-list nrows (make-list ncols #f))))
   ;; FIXME: check length of col-styles, cell-styless
-  (define cell-istyle (hash-set* istyle 'inset-to-width? #f 'block-width +inf.0))
+  (define cell-istyle
+    (hash-set* istyle
+               'inset-to-width? #f
+               'block-width +inf.0
+               'table-width (get-block-width istyle)))
   (define rendered-cellss ;; (Listof (Listof (U RenderedCell #f)))
     (for/list ([cells (in-list cellss)]
                [cell-styles (in-list cell-styless)])
