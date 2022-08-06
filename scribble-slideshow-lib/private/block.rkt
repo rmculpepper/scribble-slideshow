@@ -192,7 +192,7 @@
 
 ;; render-table : Style (Listof (Listof Block)) IStyle -> Pict
 (define (render-table style cellss istyle0)
-  (let ([istyle0 (hash-set istyle0 'inset-to-width? #f)]) ;; !!
+  (let (#;[istyle0 (hash-set istyle0 'inset-to-width? #f)]) ;; !!
     (define-values (istyle nstyle) (add*-block-style style istyle0 #:kind 'table))
     (call/block-style istyle nstyle (lambda (istyle) (render-table* istyle nstyle cellss)))))
 
@@ -206,27 +206,30 @@
   (define cell-styless
     (or (hash-ref nstyle 'table-cell-styless #f)
         (make-list nrows (make-list ncols #f))))
-  ;; FIXME: check length of col-styles, cell-styless
-  (define cell-istyle
+  (define cells-istyle
     (hash-set* istyle
                'inset-to-width? #f
                'block-width +inf.0
                'table-width (get-block-width istyle)))
+  (define-values (col-istyles col-nstyles)
+    (for/lists (l1 l2) ([col-style (in-list col-styles)])
+      (add*-style col-style cells-istyle #:kind 'table-cell)))
   (define rendered-cellss ;; (Listof (Listof RenderedCell/#f))
     (for/list ([cells (in-list cellss)]
                [cell-styles (in-list cell-styless)])
       (for/list ([cell (in-list cells)]
                  [cell-style (in-list cell-styles)]
-                 [col-style (in-list col-styles)])
+                 [col-istyle (in-list col-istyles)]
+                 [col-nstyle (in-list col-nstyles)])
         (cond [(eq? cell 'cont) #f]
-              [else (render-table-cell cell cell-style col-style cell-istyle)]))))
+              [else (render-table-cell cell cell-style col-istyle col-nstyle)]))))
   (define col-widths0 (calculate-column-widths rendered-cellss nrows))
   (define col-widths
-    (cond [(hash-ref istyle 'inset-to-width? #f)
-           (define width (hash-ref istyle 'block-width 0))
-           (define dwidth (max 0 (- width (apply + col-widths0))))
-           (map (lambda (w) (+ w (/ dwidth ncols))) col-widths0)]
-          [else col-widths0]))
+    (let ([width (get-block-width istyle)])
+      (cond [(and (< width +inf.0) (hash-ref nstyle 'table-full-width #f))
+             (define dwidth (max 0 (- width (apply + col-widths0))))
+             (map (lambda (w) (+ w (/ dwidth ncols))) col-widths0)]
+            [else col-widths0])))
   (define row->pict (make-row->pict col-widths))
   (apply vl-append 0 (map row->pict rendered-cellss)))
 
@@ -273,12 +276,10 @@
 ;; RenderedCell = (rcell Pict IStyle NStyle)
 (struct rcell (p istyle nstyle) #:prefab)
 
-;; render-table-cell : Block Style Style IStyle -> RenderedCell
-(define (render-table-cell block cell-style col-style istyle0)
-  (define-values (istyle1 nstyle1)
-    (add*-block-style col-style istyle0 #:kind 'table-cell))
+;; render-table-cell : Block Style IStyle NStyle -> RenderedCell
+(define (render-table-cell block cell-style istyle0 nstyle0)
   (define-values (istyle nstyle)
-    (add*-block-style cell-style istyle1 nstyle1 #:kind 'table-cell))
+    (add*-block-style cell-style istyle0 nstyle0 #:kind 'table-cell))
   (rcell (render-block block istyle) istyle nstyle))
 
 ;; ------------------------------------------------------------
@@ -322,8 +323,9 @@
 
 ;; apply-base-block-styles : Pict IStyle NStyle -> Pict
 (define (apply-base-block-styles p istyle nstyle)
-  (cond [(hash-ref istyle 'inset-to-width? #f)
-         (define dwidth (- (hash-ref istyle 'block-width) (pict-width p)))
+  (define w (get-block-width istyle))
+  (cond [(< w +inf.0) ;; (hash-ref istyle 'inset-to-width? #f)
+         (define dwidth (- w (pict-width p)))
          (case (hash-ref istyle 'block-halign 'left)
            [(left) (inset p 0 0 dwidth 0)]
            [(right) (inset p dwidth 0 0 0)]

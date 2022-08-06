@@ -381,8 +381,8 @@
 
    '(handlers table)
    (hash
-    'boxed     '((istyle inset-to-width? #t)
-                 (nstyle bgcolor "aliceblue" block-border (top)))
+    'boxed     '(#;(istyle inset-to-width? #t)
+                 (nstyle table-full-width #t bgcolor "aliceblue" block-border (top)))
     ;;         tables generally disable inset-to-width?, but a boxed table restores it
     'centered  `((istyle block-halign center))
     'aux       '()
