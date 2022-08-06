@@ -141,7 +141,8 @@ The exports of @racketmodname[scribble-slideshow/pict] are also available from
 @racketmodname[slideshow] module, so it can be used in context where the GUI is
 disallowed.
 
-@defproc[(flow-pict [pre-flow pre-flow?] ...)
+@defproc[(flow-pict [pre-flow pre-flow?] ...
+                    [#:style style (or/c #f style? symbol? string?) plain])
          pict?]{
 
 Decodes the @racket[pre-flow]s into Scribble @s-tech{flow} (see
@@ -255,26 +256,30 @@ The following Scribble @s-tech{style properties} are recognized and handled:
 @; ----------------------------------------
 @subsubsection[#:tag "block-style"]{Translation of Scribble Flow}
 
-The following @tech{sp-style} keys are relevant to the translation of Scribble @s-tech{blocks}
-and @s-tech{flow}:
+The following @tech{sp-style} keys are relevant to the translation of Scribble
+@s-tech{blocks} and @s-tech{flow}:
 @itemlist[
 
 @item{@racket['block-width] --- A positive real, may be @racket[+inf.0] to
 disable linebreaking.}
 
-@item{@racket['block-border] --- A list of symbols in @racket['all],
-@racket['left], @racket['right], @racket['top], @racket['bottom].}
-
-@item{@racket['bgcolor] --- @racket[#f] or a string or @racket[color%].}
-
-@;{Not described: inset-to-width?, block-halign, block-inset}
+@item{@racket['block-halign] --- One of @racket['left], @racket['right], or
+@racket['center].}
 
 @item{@racket['block-sep] --- A nonnegative real, used for the spacing between
 blocks.}
 
 @item{@racket['line-sep] --- A nonnegative real, used for the spacing between
-lines in a paragraph and between items in a @racket['compact]
-@s-tech{itemization}.}
+lines in a paragraph.}
+
+@item{@racket['bgcolor] --- @racket[#f] or a string or @racket[color%]. When
+this style is applied to a block, the background color is applied to the whole
+block, and the style is not inherited by the block's contents.}
+
+@;{ NStyle keys:
+@item{@racket['block-border] --- A list of symbols in @racket['all],
+@racket['left], @racket['right], @racket['top], @racket['bottom].}
+}
 
 ]
 
@@ -294,15 +299,6 @@ The following Scribble @s-tech{style properties} are recognized and handled:
 
 @; ----------------------------------------
 @subsubsection[#:tag "part-style"]{Translation of Scribble Parts}
-
-The following @tech{sp-style} keys are relevant to the translation of Scribble
-@s-tech{parts}:
-@itemlist[
-
-@item{@racket['slide-styles] --- A hash mapping symbol keys such as
-@racket['aspect] and @racket['layout]) to default slide settings.}
-
-]
 
 The initial @tech{style mapping} contains one pseudo-@s-tech{style name} for
 Scribble parts:
@@ -342,29 +338,38 @@ The following keys are relevant to the translation of Scribble @s-tech{styles}:
 @itemlist[
 
 @item{@racket['styles] --- A @deftech{style mapping}, a hash mapping Scribble
-@s-tech{style names} (symbols and strings) to @tech{sp-style updates}.}
+@s-tech{style names} (symbols and strings) to @tech{sp-style diff-list}.}
 
 ]
 
-An @deftech{sp-style update} is one of the following:
+An @deftech{sp-style diff-list} is a list of @tech{sp-style diff}s. A
+@deftech{sp-style diff} is one of the following:
 @itemlist[
 
-@item{@racket[(-> hash? hash?)] --- A procedure that takes the current
-@tech{sp-style} and returns a new one.}
+@item{@racket[(list 'istyle _key _value ... ...)] --- Sets each @racket[_key] to
+the corresponding @racket[_value].}
 
-@item{@racket[(list _key _value ... ...)] --- A list of even length with
-alternating keys and values.  Equivalent to @racket[(lambda (spstyle) (hash-set*
-spstyle _key _value ... ...))].}
+@item{@racket[(list 'update _key _default _update)] --- Updates @racket[_key] by
+applying @racket[_update] to its existing value (or to @racket[_default]) if the
+key has no existing value.}
 
-@item{@racket[(hash _key _value/updater ... ...)] --- A hash that maps each key
-to either a value (if not a procedure) or an update procedure that takes the old
-value and produces a new one.}
+@item{@racket[(list 'ref _style-name)] --- Applies the changes of the style
+named @racket[_style-name] in the current @tech{style mapping}.}
+
+@item{@racket[(list 'stylemap _style-name _style-diff-list ... ...)] --- Updates
+the current @tech{style mapping}, adding or replacing entries for the given
+@racket[_style-name]s.}
+
+@;{
+@item{@racket[(list 'nstyle key value ... ...)] --- ?}
+@item{@racket[(list 'nstyle-update key value ... ...)] --- ?}
+}
 
 ]
 
 @(define (styleprop) (s-tech "style property"))
 
-@defproc[(style-transformer [update @#,tech{sp-style update}]) any/c]{
+@defproc[(style-diffs [update @#,tech{sp-style diff-list}]) any/c]{
 
 Returns an opaque value suitable as a Scribble @(styleprop). When the style
 property is applied to a Scribble structure, it updates the current
@@ -506,24 +511,24 @@ staging}.
 
 @title{An enumeration of ponderous considerations}
 
-@in-layer[#:layer main-layer]{
+@compound*[#:layer main-layer]{
 In the final analysis, there are many important points to consider.
 @itemlist[
 @item{There is @emph{this} point.}
 @item{And there is @bold{that} point.}
 ]}
 
-@in-layer[#:layer side-layer]{
+@compound*[#:layer side-layer]{
 The points above notwithstanding, the contrary position is also defensible.
 }
 
 @section[#:style 'next]{..}
 
-@in-layer[#:layer main-layer]{
+@compound*[#:layer main-layer]{
 That these arguments are compelling is self-evident.
 }
 
-@in-layer[#:layer side-layer]{
+@compound*[#:layer side-layer]{
 But only in the sense that the benighted continue to attempt to defend it.
 }
 }|

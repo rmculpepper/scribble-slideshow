@@ -16,23 +16,37 @@
            (->* [] [#:style (or/c #f s:style? symbol? string?) #:resolve? boolean?]
                 #:rest (listof s:pre-flow?)
                 pict?)]
-          [current-sp-style  ;; deprecated
-           (parameter/c (and/c hash? hash-eq? immutable?))]
+          [scribble-slide-picts
+           (-> s:part? (listof pict?))]
 
           [compound*
            (->* [] [#:style (or/c #f s:style? symbol? string?) #:layer (or/c #f layer?)]
                 #:rest (listof s:pre-flow?)
                 s:block?)]
           [part/make-slides
-           (-> (-> any) s:part?)])
+           (-> (-> any) s:part?)]
 
-         text-post-property
-         elem-post-property
-         style-transformer
-         style-diffs
-
-         scribble-slide-picts
+          [current-sp-style  ;; deprecated
+           (parameter/c (and/c hash? hash-eq? immutable?))]
+          [style-diffs
+           (-> (listof style-diff/c) any)]
+          [text-post-property
+           (-> (-> pict? pict?) any)]
+          [elem-post-property
+           (-> (-> pict? pict?) any)])
 
          layer
          slide-layer
          slide-zone)
+
+(define (key-value-list? v)
+  (and (list? v) (even? (length v))))
+
+(define style-diff/c
+  (or/c (cons/c 'istyle key-value-list?)
+        (cons/c 'nstyle key-value-list?)
+        (list/c 'update symbol? any/c procedure?)
+        (list/c 'nstyle-update symbol? any/c procedure?)
+        (cons/c 'stylemap key-value-list?)
+        (list/c 'ref (or/c symbol? string?))
+        #| (IStyle NStyle -> IStyle NStyle) variant reserved for internal use |#))
