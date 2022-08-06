@@ -11,10 +11,10 @@
          text-post-property
          elem-post-property
          style-transformer
+         style-diffs
 
          scribble-slide-picts
          part/make-slides
-         in-style
          in-layer
          layer
          slide-layer

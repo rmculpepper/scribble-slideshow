@@ -28,8 +28,7 @@
   ;; widths, row heights (absolute or fractional?)
 
   (define (columns #:sep [sep #f] . cols)
-    (local-require (only-in slideshow client-w)
-                   (only-in scribble/base centered))
+    (local-require (only-in slideshow client-w))
     (define (calc-sep)
       (define total-free-w (- client-w (apply + (map p:pict-width cols))))
       (max 0
@@ -42,8 +41,7 @@
     (define istyle (current-sp-style))
     (parameterize ((current-sp-style
                     (hash-set* istyle
-                               'block-width (- (* client-w wfraction) hmargin)
-                               'inset-to-width #t)))
+                               'block-width (- (* client-w wfraction) hmargin))))
       (p:frame (apply flow-pict pre-flow))))
 
    #;
@@ -79,12 +77,7 @@
    (current-sp-style (hash-set* (current-sp-style) 'justify #t 'debug '(linebreak)))
 
    (define talk-style
-     (style #f (list 'widescreen
-                     (style-transformer
-                      (lambda (istyle)
-                        (hash-set* istyle
-                                   'text-base 'roman
-                                   'slide-title-base '(bold . swiss))))))))
+     (style #f (list 'widescreen (style-diffs '((istyle text-base roman)))))))
 
 @title[#:style talk-style]{Demo of @racketmodname[scribble-slideshow] language}
 

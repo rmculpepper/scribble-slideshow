@@ -192,9 +192,8 @@
 
 ;; render-table : Style (Listof (Listof Block)) IStyle -> Pict
 (define (render-table style cellss istyle0)
-  (let (#;[istyle0 (hash-set istyle0 'inset-to-width? #f)]) ;; !!
-    (define-values (istyle nstyle) (add*-block-style style istyle0 #:kind 'table))
-    (call/block-style istyle nstyle (lambda (istyle) (render-table* istyle nstyle cellss)))))
+  (define-values (istyle nstyle) (add*-block-style style istyle0 #:kind 'table))
+  (call/block-style istyle nstyle (lambda (istyle) (render-table* istyle nstyle cellss))))
 
 ;; render-table* : IStyle NStyle (Listof (Listof Block)) -> Pict
 (define (render-table* istyle nstyle cellss)
@@ -208,7 +207,6 @@
         (make-list nrows (make-list ncols #f))))
   (define cells-istyle
     (hash-set* istyle
-               'inset-to-width? #f
                'block-width +inf.0
                'table-width (get-block-width istyle)))
   (define-values (col-istyles col-nstyles)
@@ -324,7 +322,7 @@
 ;; apply-base-block-styles : Pict IStyle NStyle -> Pict
 (define (apply-base-block-styles p istyle nstyle)
   (define w (get-block-width istyle))
-  (cond [(< w +inf.0) ;; (hash-ref istyle 'inset-to-width? #f)
+  (cond [(< w +inf.0)
          (define dwidth (- w (pict-width p)))
          (case (hash-ref istyle 'block-halign 'left)
            [(left) (inset p 0 0 dwidth 0)]

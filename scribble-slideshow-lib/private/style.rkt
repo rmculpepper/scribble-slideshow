@@ -60,8 +60,7 @@
 
 ;; Block style keys:
 ;; - 'bgcolor : (U color% String)
-;; - 'inset-to-width? : Boolean
-;; - 'block-width : PositiveReal
+;; - 'block-width : ExtReal, if +inf.0 then no wrap & no inset block
 ;; - 'block-halign : (U 'left 'right 'center)
 ;; - 'block-sep : NNReal
 ;; - 'line-sep : NNReal
@@ -262,7 +261,6 @@
            (justify         . #f)
            ;; Block Styles
            (bgcolor         . #f)
-           (inset-to-width? . #t)
            (block-halign    . left)
            (block-width     . ,BLOCK-WIDTH)
            (block-sep       . ,BLOCK-SEP)
@@ -381,9 +379,7 @@
 
    '(handlers table)
    (hash
-    'boxed     '(#;(istyle inset-to-width? #t)
-                 (nstyle table-full-width #t bgcolor "aliceblue" block-border (top)))
-    ;;         tables generally disable inset-to-width?, but a boxed table restores it
+    'boxed     '((nstyle table-full-width #t bgcolor "aliceblue" block-border (top)))
     'centered  `((istyle block-halign center))
     'aux       '()
     'block     '()
