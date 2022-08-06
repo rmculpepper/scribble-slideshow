@@ -192,15 +192,11 @@
 ;; split-blocks-by-layer : (Listof Block) Layer -> Hash[Layer => (Listof Block), reversed]
 (define (split-blocks-by-layer blocks default-layer)
   (define (hash-cons h k v) (hash-set h k (cons v (hash-ref h k null))))
-  (define (get-layer style)
-    (for/or ([p (in-list (style-properties style))] #:when (layer? p)) p))
   (let loop ([h (hasheq)] [blocks blocks] [layer default-layer])
     (for/fold ([h h]) ([b (in-list blocks)])
       (match b
-        [(compound-paragraph style blocks)
-         (cond [(get-layer style)
-                => (lambda (in-layer) (loop h blocks in-layer))]
-               [else (hash-cons h layer b)])]
+        [(compound-paragraph (style 'set-layer (list (? layer? lay))) blocks)
+         (loop h blocks lay)]
         [b (hash-cons h layer b)]))))
 
 (define ((wrap-maker istyle maker))

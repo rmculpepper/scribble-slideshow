@@ -254,7 +254,7 @@
 
 ;; make-row->pict : (Listof Real) -> (Listof RenderedCell/#f) -> Pict
 (define ((make-row->pict col-widths) rendered-cells)
-  (for/fold ([acc null] [extra-width 0] #:result (apply hbl-append 0 acc)) ;; FIXME: valign?
+  (for/fold ([acc null] [extra-width 0] #:result (apply hbl-append 0 acc))
             ([cell (in-list (reverse rendered-cells))]
              [width (in-list (reverse col-widths))])
     (match cell

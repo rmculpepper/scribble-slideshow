@@ -121,7 +121,9 @@
 ;; - (list 'nstyle { Symbol Value } ...)
 ;; - (list 'update Symbol Value (Value -> Value))
 ;; - (list 'nstyle-update Symbol Value (Value -> Value))
+;; - (list 'stylemap { Symbol/String Value } ...)
 ;; - (list 'ref (U String Symbol)) -- add effects of given style name
+;; - (IStyle NStyle -> IStyle NStyle)
 
 ;; styles-update : IStyle NStyle StyleDiffs -> (values IStyle NStyle)
 (define (styles-update istyle nstyle diffs)
@@ -140,8 +142,9 @@
      (values (hash-update istyle key update default) nstyle)]
     [(list 'nstyle-update key default (? procedure? update))
      (values istyle (hash-update nstyle key update default))]
-    [(list 'istyle-f (? procedure? update))
-     (values (update istyle) nstyle)]
+    [(list 'stylemap kvs)
+     (let ([stylemap (apply hash-set* (hash-ref istyle 'styles) kvs)])
+       (values (hash-set istyle 'styles stylemap) nstyle))]
     [(list 'ref style-name)
      (cond [(istyle-stylemap-ref istyle style-name null)
             => (lambda (diffs)
@@ -149,6 +152,7 @@
            [else
             (log-scribble-slideshow-warning "styles-update1: undefined style ref: ~e" style-name)
             (values istyle nstyle)])]
+    [(? procedure? update) (update istyle nstyle)]
     [_ (error 'styles-update1 "bad style diff: ~e" diff)]))
 
 ;; istyle-stylemap-ref : IStyle Any Default -> (U StyleDiffs Default)
@@ -334,7 +338,8 @@
    ;; Standard block styles:
 
    ;; 'compact generalized from itemization to all block forms
-   'compact `((istyle-f ,(lambda (istyle) (hash-set istyle 'block-sep (get-line-sep istyle)))))
+   'compact `(,(lambda (istyle nstyle)
+                 (values (hash-set istyle 'block-sep (get-line-sep istyle)) nstyle)))
 
    ;; ----------------------------------------
    ;; Custom styles:

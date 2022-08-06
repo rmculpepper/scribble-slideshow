@@ -43,8 +43,19 @@
   (define s (s:style #f (list 'ignore (make-slides-prop mk))))
   (s:part #f null #f s null null null))
 
-(define (in-layer #:layer lay . flow)
-  (s:compound-paragraph (s:style #f (list lay)) (s:decode-flow flow)))
+(define (compound* #:layer [layer #f]
+                   #:style [s s:plain]
+                   . pre-flow)
+  (define s*
+    (cond [(s:style? s) s]
+          [(symbol? s) (s:style s null)]
+          [(string? s) (s:style s null)]
+          [(eq? s #f) s:plain]
+          [else (s:style #f (list s))]))
+  (define b (s:compound-paragraph s* (s:decode-flow pre-flow)))
+  (cond [layer
+         (s:compound-paragraph (s:style 'set-layer (list layer)) (list b))]
+        [else b]))
 
 ;; ============================================================
 ;; Slide making

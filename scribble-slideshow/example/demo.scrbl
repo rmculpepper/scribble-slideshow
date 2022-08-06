@@ -74,10 +74,14 @@
 
    ;; Here we change some base style defaults.
 
-   (current-sp-style (hash-set* (current-sp-style) 'justify #t 'debug '(linebreak)))
+   ;(current-sp-style (hash-set* (current-sp-style) 'justify #t 'debug '(linebreak)))
 
    (define talk-style
-     (style #f (list 'widescreen (style-diffs '((istyle text-base roman)))))))
+     (style #f (list 'widescreen
+                     (style-diffs
+                      '((istyle text-base roman
+                                justify #t
+                                debug (linebreak))))))))
 
 @title[#:style talk-style]{Demo of @racketmodname[scribble-slideshow] language}
 
@@ -149,11 +153,11 @@ It says @bold{more} things, things that aren't said on the left.
                                                          #:color "green" #:draw-border? #f))
                                    (p:cc-superimpose p (p:cellophane bg 0.25))))))
 
-@in-layer[#:layer left-layer]{
+@compound*[#:layer left-layer]{
 On the left, we have some text. It says a few things.
 }
 
-@in-layer[#:layer right-layer]{
+@compound*[#:layer right-layer]{
 On the right, we have more text.@(linebreak)
 With an explicit linebreak.
 
