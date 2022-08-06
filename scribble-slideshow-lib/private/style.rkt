@@ -107,7 +107,7 @@
 ;; - layout   : 'auto | 'center | 'top | 'tall
 ;; - aspect   : 'widescreen | 'fullscreen | #f
 ;; - mode     : 'next | 'alt | #f | 'digress
-;; - ignore   : 'ignore | 'ignore*
+;; - ignore   : 'ignore | 'ignore* | no-ignore | #f
 ;; - no-title : 'no-title | #f
 ;; - maker    : (-> Void)
 
@@ -425,6 +425,7 @@
 
     'ignore   `((nstyle slide-ignore ignore))
     'ignore*  `((nstyle slide-ignore ignore*))
+    'no-ignore `((nstyle slide-ignore no-ignore))
 
     'no-title `((nstyle slide-no-title no-title)))))
 

@@ -132,10 +132,12 @@
 
     ;; handle-part* : __ -> (values PreState PostTx)
     (define/public (handle-part* istyle nstyle title blocks parts start-st)
+      (define ignore-mode (hash-ref nstyle 'slide-ignore #f))
       (define bs-tx
-        (case (hash-ref nstyle 'slide-ignore #f)
-          [(ignore) (lambda (post) post)]
-          [else (handle-part-blocks istyle nstyle title blocks start-st)]))
+        (cond [(or (eq? ignore-mode 'ignore)
+                   (and (null? blocks) (pair? parts) (not (eq? ignore-mode 'no-ignore))))
+               (lambda (post) post)]
+              [else (handle-part-blocks istyle nstyle title blocks start-st)]))
       (define-values (final-st subs-tx) (handle-parts istyle parts start-st))
       (values final-st (lambda (post) (subs-tx (bs-tx post)))))
 
