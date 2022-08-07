@@ -229,7 +229,7 @@
              (map (lambda (w) (+ w (/ dwidth ncols))) col-widths0)]
             [else col-widths0])))
   (define row->pict (make-row->pict col-widths))
-  (apply vl-append 0 (map row->pict rendered-cellss)))
+  (apply vl-append (get-line-sep istyle) (map row->pict rendered-cellss)))
 
 ;; calculate-column-widths : (Listof (Listof RenderedCell/#f)) Nat -> (Listof Real)
 (define (calculate-column-widths rendered-cellss nrows)
@@ -254,7 +254,26 @@
 
 ;; make-row->pict : (Listof Real) -> (Listof RenderedCell/#f) -> Pict
 (define ((make-row->pict col-widths) rendered-cells)
-  (for/fold ([acc null] [extra-width 0] #:result (apply hbl-append 0 acc))
+  (define-values (a h d)
+    (for/fold ([a 0] [h 0] [d 0]) ([rc (in-list rendered-cells)] #:when rc)
+      (let ([p (rcell-p rc)])
+        (values (max a (pict-ascent p)) (max h (pict-height p)) (max d (pict-descent p))))))
+  (for/fold ([acc null] [extra-width 0] #:result (apply hc-append 0 acc))
+            ([cell (in-list (reverse rendered-cells))]
+             [width (in-list (reverse col-widths))])
+    (match cell
+      [#f
+       (values acc (+ width extra-width))]
+      [(rcell p istyle nstyle)
+       (define p* (apply-table-valign p a h d (hash-ref nstyle 'cell-valign 'topline)))
+       (define cp (apply-table-cell-styles p* (+ width extra-width) istyle nstyle))
+       (values (cons cp acc) 0)])))
+
+#;
+;; make-row->pict : (Listof Real) -> (Listof RenderedCell/#f) -> Pict
+;; Row for cells w/ no valign.
+(define ((make-row->pict col-widths) rendered-cells)
+  (for/fold ([acc null] [extra-width 0] #:result (apply htl-append 0 acc))
             ([cell (in-list (reverse rendered-cells))]
              [width (in-list (reverse col-widths))])
     (match cell
@@ -263,6 +282,17 @@
       [(rcell p istyle nstyle)
        (define cp (apply-table-cell-styles p (+ width extra-width) istyle nstyle))
        (values (cons cp acc) 0)])))
+
+(define (apply-table-valign p a h d valign)
+  (define dh (- h (pict-height p)))
+  (case valign
+    [(vcenter) (inset p 0 (/ dh 2))]
+    [(top) (inset p 0 0 0 dh)]
+    [(bottom) (inset p 0 dh 0 0)]
+    [(baseline) (let ([da (- a (pict-ascent p))])
+                  (inset p 0 da 0 (- dh da)))]
+    [(topline) (let ([dd (- d (pict-descent p))])
+                 (inset p 0 (- dh dd) 0 dd))]))
 
 (define (transpose xss)
   (cond [(andmap pair? xss) (cons (map car xss) (transpose (map cdr xss)))]

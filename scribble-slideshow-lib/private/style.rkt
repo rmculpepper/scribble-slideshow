@@ -29,6 +29,14 @@
                               [else (hash-set h2 key v1)])))]
           [else (values h1 h2)])))
 
+(define (style+ s props)
+  (match s
+    [(s:style style-name props0)
+     (s:style style-name (if (null? props) props0 (append props0 props)))]
+    [(? symbol?) (s:style s props)]
+    [(? string?) (s:style s props)]
+    [#f (if (null? props) s:plain (s:style #f props))]))
+
 ;; ============================================================
 ;; IStyle (aka SP-Style)
 
@@ -408,6 +416,9 @@
    '(handlers part)
    (hash
     'index '())
+
+   '(handlers layer)
+   (hash)
 
    '(handlers slide)
    (hash
