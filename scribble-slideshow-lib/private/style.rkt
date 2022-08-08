@@ -66,12 +66,19 @@
 ;; Para styles:
 ;; - 'justify : #t = 'justify | #f = 'greedy
 
+;; Itemization styles:
+;; - 'itemize-bullets : (Listof Symbol)
+
 ;; Block style keys:
 ;; - 'bgcolor : (U color% String)
 ;; - 'block-width : ExtReal, if +inf.0 then no wrap & no inset block
 ;; - 'block-halign : (U 'left 'right 'center)
 ;; - 'block-sep : NNReal
 ;; - 'line-sep : NNReal
+
+;; Context style keys:
+;; - 'itemize-level : Nat
+;; - 'table-width : ExtReal
 
 ;; Accessors
 (define (get-block-width istyle) (hash-ref istyle 'block-width BLOCK-WIDTH))
@@ -105,6 +112,7 @@
 ;; Table keys:
 ;; - table-cell-styless : (Listof (Listof Style/#f)) or #f
 ;; - table-col-styles : (Listof Style/#f) or #f
+;; - table-full-width : Boolean
 
 ;; Table cell keys:
 ;; - 'cell-border : (Listof (U 'all 'left 'right 'top 'bottom))
