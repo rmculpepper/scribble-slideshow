@@ -195,6 +195,12 @@
   (define-values (istyle nstyle) (add*-block-style style istyle0 #:kind 'table))
   (call/block-style istyle nstyle (lambda (istyle) (render-table* istyle nstyle cellss))))
 
+;; Table rendering:
+;; Pass 1: Render each cell, including per-cell padding
+;; Pass 2: Normalize sizes based on halign and valign
+;; Pass 3: Apply bgcolor
+;; Pass 4: Normalize sizes based on margins (max lr per column, max tb per row)
+
 ;; render-table* : IStyle NStyle (Listof (Listof Block)) -> Pict
 (define (render-table* istyle nstyle cellss)
   (define nrows (length cellss))
@@ -221,67 +227,67 @@
                  [col-nstyle (in-list col-nstyles)])
         (cond [(eq? cell 'cont) #f]
               [else (render-table-cell cell cell-style col-istyle col-nstyle)]))))
-  (define col-widths0 (calculate-column-widths rendered-cellss nrows))
+  (define columns (transpose rendered-cellss))
+  (define-values (col-mls col-mrs)
+    (for/lists (cmls cmrs) ([col (in-list columns)])
+      (for/fold ([cml 0] [cmr 0]) ([rc (in-list col)] #:when rc)
+        (match-define (list ml _ mr _)
+          (hash-ref (rcell-nstyle rc) 'block-margin '(0 0 0 0)))
+        (values (max cml ml) (max cmr mr)))))
+  (define col-widths0 (calculate-column-widths columns nrows col-mls col-mrs))
   (define col-widths
     (let ([width (get-block-width istyle)])
       (cond [(and (< width +inf.0) (hash-ref nstyle 'table-full-width #f))
              (define dwidth (max 0 (- width (apply + col-widths0))))
              (map (lambda (w) (+ w (/ dwidth ncols))) col-widths0)]
             [else col-widths0])))
-  (define row->pict (make-row->pict col-widths))
+  (define row->pict (make-row->pict col-widths col-mls col-mrs))
   (apply vl-append (get-line-sep istyle) (map row->pict rendered-cellss)))
 
-;; calculate-column-widths : (Listof (Listof RenderedCell/#f)) Nat -> (Listof Real)
-(define (calculate-column-widths rendered-cellss nrows)
-  (let ([columns (transpose rendered-cellss)])
-    (for/fold ([rcolwidths null]
-               [leftovers (make-list nrows 0)]
-               #:result (reverse rcolwidths))
-              ([col (in-list columns)]
-               [next-col (in-list (cdr (append columns (list (make-list nrows #t)))))])
-      (define eff-cell-widths
-        (for/list ([cell (in-list col)] [leftover leftovers])
-          (+ leftover (if cell (pict-width (rcell-p cell)) 0))))
-      (define col-width
-        (apply max 0 (for/list ([eff-cell-width (in-list eff-cell-widths)]
-                                [next-cell (in-list next-col)]
-                                #:when next-cell)
-                       eff-cell-width)))
-      (define next-leftovers
-        (for/list ([eff-cell-width (in-list eff-cell-widths)])
-          (max 0 (- eff-cell-width col-width))))
-      (values (cons col-width rcolwidths) next-leftovers))))
+;; calculate-column-widths : (Listof (Listof RenderedCell/#f)) Nat (Listof Real)x2
+;;                        -> (Listof Real)
+(define (calculate-column-widths columns nrows col-mls col-mrs)
+  (for/fold ([rcolwidths null]
+             [leftovers (make-list nrows 0)]
+             #:result (reverse rcolwidths))
+            ([col (in-list columns)]
+             [cml (in-list col-mls)]
+             [cmr (in-list col-mrs)]
+             [next-col (in-list (cdr (append columns (list (make-list nrows #t)))))])
+    (define eff-cell-widths
+      (for/list ([cell (in-list col)] [leftover leftovers])
+        (+ leftover (if cell (+ (pict-width (rcell-p cell)) cml cmr) 0))))
+    (define col-width
+      (apply max 0 (for/list ([eff-cell-width (in-list eff-cell-widths)]
+                              [next-cell (in-list next-col)]
+                              #:when next-cell)
+                     eff-cell-width)))
+    (define next-leftovers
+      (for/list ([eff-cell-width (in-list eff-cell-widths)])
+        (max 0 (- eff-cell-width col-width))))
+    (values (cons col-width rcolwidths) next-leftovers)))
 
-;; make-row->pict : (Listof Real) -> (Listof RenderedCell/#f) -> Pict
-(define ((make-row->pict col-widths) rendered-cells)
-  (define-values (a h d)
-    (for/fold ([a 0] [h 0] [d 0]) ([rc (in-list rendered-cells)] #:when rc)
-      (let ([p (rcell-p rc)])
-        (values (max a (pict-ascent p)) (max h (pict-height p)) (max d (pict-descent p))))))
-  (for/fold ([acc null] [extra-width 0] #:result (apply hc-append 0 acc))
+;; make-row->pict : (Listof Real)x3 -> (Listof RenderedCell/#f) -> Pict
+(define ((make-row->pict col-widths col-mls col-mrs) rendered-cells)
+  (define-values (a h d mt mb)
+    (for/fold ([a 0] [h 0] [d 0] [mt 0] [mb 0]) ([rc (in-list rendered-cells)] #:when rc)
+      (match-define (rcell p _ nstyle _) rc)
+      (match-define (list _ cmt _ cmb) (hash-ref nstyle 'block-margin '(0 0 0 0)))
+      (values (max a (pict-ascent p)) (max h (pict-height p)) (max d (pict-descent p))
+              (max mt cmt) (max mb cmb))))
+  (for/fold ([acc null] [extraw 0] #:result (apply hc-append 0 acc))
             ([cell (in-list (reverse rendered-cells))]
-             [width (in-list (reverse col-widths))])
+             [cw (in-list (reverse col-widths))]
+             [ml (in-list (reverse col-mls))]
+             [mr (in-list (reverse col-mrs))])
     (match cell
       [#f
-       (values acc (+ width extra-width))]
-      [(rcell p istyle nstyle)
+       (values acc (+ cw extraw))]
+      [(rcell p istyle nstyle mw)
        (define p* (apply-table-valign p a h d (hash-ref nstyle 'cell-valign 'topline)))
-       (define cp (apply-table-cell-styles p* (+ width extra-width) istyle nstyle))
-       (values (cons cp acc) 0)])))
-
-#;
-;; make-row->pict : (Listof Real) -> (Listof RenderedCell/#f) -> Pict
-;; Row for cells w/ no valign.
-(define ((make-row->pict col-widths) rendered-cells)
-  (for/fold ([acc null] [extra-width 0] #:result (apply htl-append 0 acc))
-            ([cell (in-list (reverse rendered-cells))]
-             [width (in-list (reverse col-widths))])
-    (match cell
-      [#f
-       (values acc (+ width extra-width))]
-      [(rcell p istyle nstyle)
-       (define cp (apply-table-cell-styles p (+ width extra-width) istyle nstyle))
-       (values (cons cp acc) 0)])))
+       (define cp (apply-table-cell-styles p* (+ cw extraw (- mw)) istyle nstyle))
+       (define mp (inset cp ml mt mr mb))
+       (values (cons mp acc) 0)])))
 
 (define (apply-table-valign p a h d valign)
   (define dh (- h (pict-height p)))
@@ -301,14 +307,18 @@
 ;; ----------------------------------------
 ;; Table Cell
 
-;; RenderedCell = (rcell Pict IStyle NStyle)
-(struct rcell (p istyle nstyle) #:prefab)
+;; RenderedCell = (rcell Pict IStyle NStyle Real)
+(struct rcell (p istyle nstyle mw) #:prefab)
 
 ;; render-table-cell : Block Style IStyle NStyle -> RenderedCell
 (define (render-table-cell block cell-style istyle0 nstyle0)
   (define-values (istyle nstyle)
     (add*-block-style cell-style istyle0 nstyle0 #:kind 'table-cell))
-  (rcell (render-block block istyle) istyle nstyle))
+  (match-define (list ml mt mr mb) (or (hash-ref nstyle 'block-margin #f) '(0 0 0 0)))
+  (match-define (list pl pt pr pb) (or (hash-ref nstyle 'block-padding #f) '(0 0 0 0)))
+  (define istyle* (istyle-adjust-block-width istyle (- 0 ml mr pl pr)))
+  (define pp (inset (render-block block istyle*) pl pt pr pb))
+  (rcell pp istyle nstyle (+ ml mr)))
 
 ;; ------------------------------------------------------------
 ;; Table Cell Styles
@@ -327,7 +337,6 @@
                    => (lambda (borders) (add-borders p borders))]
                   [else p])])
     p))
-
 
 ;; ============================================================
 ;; Block Styles
