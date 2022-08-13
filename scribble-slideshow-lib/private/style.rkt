@@ -146,13 +146,19 @@
 
 ;; A StyleDiffs is (Listof StyleDiff)
 ;; A StyleDiff is one of
-;; - (list 'istyle { Symbol Value } ...)
-;; - (list 'nstyle { Symbol Value } ...)
-;; - (list 'update Symbol Value (Value -> Value))
-;; - (list 'nstyle-update Symbol Value (Value -> Value))
-;; - (list 'stylemap { Symbol/String Value } ...)
+;; - (list 'iset { Symbol Value } ...)
+;; - (list 'nset { Symbol Value } ...)
+;; - (list 'iset* UpdateDiff ...)
+;; - (list 'nset* UpdateDiff ...)
 ;; - (list 'ref (U String Symbol)) -- add effects of given style name
+;; - (list 'stylemap { Symbol/String Value } ...)
 ;; - (IStyle NStyle -> IStyle NStyle)
+
+;; An UpdateDiff is one of
+;; - (list 'set Symbol Value)
+;; - (list 'iadd Symbol Value)
+;; - (list 'toggle Symbol Value)
+;; - (list 'update Symbol Value (Value -> Value))
 
 ;; styles-update : IStyle NStyle StyleDiffs -> (values IStyle NStyle)
 (define (styles-update istyle nstyle diffs)
@@ -163,26 +169,42 @@
 ;; styles-update1 : IStyle NStyle StyleDiff -> (values IStyle NStyle)
 (define (styles-update1 istyle nstyle diff)
   (match diff
-    [(list* 'istyle kvs)
+    [(list* 'iset kvs)
      (values (apply hash-set* istyle kvs) nstyle)]
-    [(list* 'nstyle kvs)
+    [(list* 'nset kvs)
      (values istyle (apply hash-set* nstyle kvs))]
-    [(list 'update key default (? procedure? update))
-     (values (hash-update istyle key update default) nstyle)]
-    [(list 'nstyle-update key default (? procedure? update))
-     (values istyle (hash-update nstyle key update default))]
+    [(list* 'iset* upds)
+     (values (foldl styles-update1/upd istyle upds) nstyle)]
+    [(list* 'nset* upds)
+     (values istyle (foldl styles-update1/upd nstyle upds))]
     [(list 'stylemap kvs)
      (let ([stylemap (apply hash-set* (hash-ref istyle 'styles) kvs)])
        (values (hash-set istyle 'styles stylemap) nstyle))]
     [(list 'ref style-name)
      (cond [(istyle-stylemap-ref istyle style-name null)
-            => (lambda (diffs)
-                 (styles-update istyle nstyle diffs))]
+            => (lambda (diffs) (styles-update istyle nstyle diffs))]
            [else
             (log-scribble-slideshow-warning "styles-update1: undefined style ref: ~e" style-name)
             (values istyle nstyle)])]
     [(? procedure? update) (update istyle nstyle)]
     [_ (error 'styles-update1 "bad style diff: ~e" diff)]))
+
+;; styles-update1/upd : UpdateDiff [IN]Style -> [IN]Style
+(define (styles-update1/upd upd instyle)
+  (match upd
+    [(list 'set key value)
+     (hash-set instyle key value)]
+    [(list 'push key value)
+     (let ([vs (hash-ref instyle key null)])
+       (cond [(member value vs) instyle]
+             [else (hash-set instyle key (cons value vs))]))]
+    [(list 'toggle key value)
+     (let ([vs (hash-ref instyle key null)])
+       (cond [(member value vs) (hash-set instyle (remove value vs))]
+             [else (hash-set instyle key (cons value vs))]))]
+    [(list 'update key default (? procedure? update))
+     (hash-update instyle key update default)]
+    [_ (error 'styles-update1/upd "bad style-diff update: ~e" upd)]))
 
 ;; istyle-stylemap-ref : IStyle Any Default -> (U StyleDiffs Default)
 ;; Lookup a style name (string or symbol) or named handler hash.
@@ -304,61 +326,58 @@
 
 ;; ----------------------------------------
 
-(define ((iconser x) xs) (if (memq x xs) xs (cons x xs)))
-(define ((toggler x) xs) (if (memq x xs) (remq x xs) (cons x xs)))
-
 (define initial-stylemap
   (hash
    ;; ----------------------------------------
    ;; Standard content style names:
 
-   'italic      `((update text-mods ,null ,(iconser 'italic)))
-   'bold        `((update text-mods ,null ,(iconser 'bold)))
-   'subscript   `((update text-mods ,null ,(iconser 'subscript)))
-   'superscript `((update text-mods ,null ,(iconser 'superscript)))
-   'combine     `((update text-mods ,null ,(iconser 'combine)))
-   'no-combine  `((update text-mods ,null ,(iconser 'no-combine)))
-   'align       `((update text-mods ,null ,(iconser 'align)))
-   'unaligned   `((update text-mods ,null ,(iconser 'unaligned)))
+   'italic      `((iset* (push text-mods italic)))
+   'bold        `((iset* (push text-mods bold)))
+   'subscript   `((iset* (push text-mods subscript)))
+   'superscript `((iset* (push text-mods superscript)))
+   'combine     `((iset* (push text-mods combine)))
+   'no-combine  `((iset* (push text-mods no-combine)))
+   'align       `((iset* (push text-mods align)))
+   'unaligned   `((iset* (push text-mods unaligned)))
 
-   'emph     `((update text-mods ,null ,(toggler 'italic)))
-   'tt       `((istyle text-base modern))
-   'sf       `((istyle text-base swiss))
-   'roman    `((istyle text-base roman))
-   'larger   `((update scale 1 ,(lambda (v) (* 3/2 v))))
-   'smaller  `((update scale 1 ,(lambda (v) (* 2/3 v))))
-   "RktBlk"  `((istyle text-base modern white-space pre))
-   "RktCmt"  `((istyle text-base modern color (#xC2 #x74 #x1F)))
-   "RktErr"  `((ref italic) (istyle text-base modern color "red"))
-   "RktIn"   `((istyle text-base modern color (#xCC #x66 #x33)))
-   "RktKw"   `((istyle text-base modern color "black"))
-   "RktMeta" `((istyle text-base modern color "black"))
-   "RktMod"  `((istyle text-base modern))
-   "RktOut"  `((istyle text-base modern color (#x96 #x00 #x96)))
-   "RktOpt"  `((ref italic) (istyle 'color "black"))
-   "RktPn"   `((istyle text-base modern color (#x84 #x3C #x24)))
-   "RktRes"  `((istyle text-base modern color (#x00 #x00 #xAF)))
-   "RktRdr"  `((istyle text-base modern))
-   "RktSym"  `((istyle text-base modern
-                       ;; Scribble renders in black, but DrRacket in dark blue.
-                       ;; I think dark blue is a better contrast with slide text.
-                       color (#x00 #x00 #x80)))
-   "RktVar"  `((ref italic) (istyle text-base modern color (#x44 #x44 #x44)))
-   "RktVal"  `((istyle text-base modern color (#x22 #x8B #x22)))
-   "RktInBG" `((istyle bgcolor "lightgray"))
-   "defmodule"   `((istyle bgcolor (#xEB #xF0 #xF4)))
-   "highlighted" `((istyle bgcolor (#xFF #xEE #xEE)))
-   "Rfiletitle"  `((istyle bgcolor (#xEE #xEE #xEE)))
-   "SCentered"   `((istyle block-halign center))
-   'no-break `((istyle white-space nowrap))
-   'hspace   `((istyle text-base modern white-space pre))
+   'emph     `((iset* (toggle text-mods italic)))
+   'tt       `((iset text-base modern))
+   'sf       `((iset text-base swiss))
+   'roman    `((iset text-base roman))
+   'larger   `((iset* (update scale 1 ,(lambda (v) (* 3/2 v)))))
+   'smaller  `((iset* (update scale 1 ,(lambda (v) (* 2/3 v)))))
+   "RktBlk"  `((iset text-base modern white-space pre))
+   "RktCmt"  `((iset text-base modern color (#xC2 #x74 #x1F)))
+   "RktErr"  `((ref italic) (iset text-base modern color "red"))
+   "RktIn"   `((iset text-base modern color (#xCC #x66 #x33)))
+   "RktKw"   `((iset text-base modern color "black"))
+   "RktMeta" `((iset text-base modern color "black"))
+   "RktMod"  `((iset text-base modern))
+   "RktOut"  `((iset text-base modern color (#x96 #x00 #x96)))
+   "RktOpt"  `((ref italic) (iset color "black"))
+   "RktPn"   `((iset text-base modern color (#x84 #x3C #x24)))
+   "RktRes"  `((iset text-base modern color (#x00 #x00 #xAF)))
+   "RktRdr"  `((iset text-base modern))
+   "RktSym"  `((iset text-base modern
+                     ;; Scribble renders in black, but DrRacket in dark blue.
+                     ;; I think dark blue is a better contrast with slide text.
+                     color (#x00 #x00 #x80)))
+   "RktVar"  `((ref italic) (iset text-base modern color (#x44 #x44 #x44)))
+   "RktVal"  `((iset text-base modern color (#x22 #x8B #x22)))
+   "RktInBG" `((iset bgcolor "lightgray"))
+   "defmodule"   `((iset bgcolor (#xEB #xF0 #xF4)))
+   "highlighted" `((iset bgcolor (#xFF #xEE #xEE)))
+   "Rfiletitle"  `((iset bgcolor (#xEE #xEE #xEE)))
+   "SCentered"   `((iset block-halign center))
+   'no-break `((iset white-space nowrap))
+   'hspace   `((iset text-base modern white-space pre))
 
-   "Rkt*Def"    `((istyle text-base modern color "black" text-mods (bold)))
+   "Rkt*Def"    `((iset text-base modern color "black" text-mods (bold)))
    "RktStxDef"  `((ref "Rkt*Def"))
    "RktSymDef"  `((ref "Rkt*Def"))
    "RktValDef"  `((ref "Rkt*Def"))
 
-   "Rkt*Link"   `((istyle color (#x00 #x77 #xAA)))
+   "Rkt*Link"   `((iset color (#x00 #x77 #xAA)))
    "RktValLink" `((ref "Rkt*Link"))
    "RktStxLink" `((ref "Rkt*Link"))
    "RktModLink" `((ref "Rkt*Link"))
@@ -372,7 +391,7 @@
 
    ;; ----------------------------------------
    ;; Custom styles:
-   'slide-title `((istyle text-base ,TITLE-BASE text-size ,TITLE-SIZE color ,TITLE-COLOR))
+   'slide-title `((iset text-base ,TITLE-BASE text-size ,TITLE-SIZE color ,TITLE-COLOR))
 
    ;; ----------------------------------------
    ;; Default Property Handlers
@@ -387,19 +406,19 @@
 
    '(handlers itemization)
    (hash
-    'ordered   `((nstyle itemization-mode ordered))
+    'ordered   `((nset itemization-mode ordered))
     'never-indents '())
 
    '(handlers nested-flow)
    (hash
-    'inset          `((nstyle block-margin (,LINE-SEP 0 ,LINE-SEP 0)))
-    'code-inset     `((nstyle block-margin (,LINE-SEP 0 ,LINE-SEP 0)))
-    'vertical-inset `((nstyle block-margin (0 ,LINE-SEP 0 ,LINE-SEP)))
+    'inset          `((nset block-margin (,LINE-SEP 0 ,LINE-SEP 0)))
+    'code-inset     `((nset block-margin (,LINE-SEP 0 ,LINE-SEP 0)))
+    'vertical-inset `((nset block-margin (0 ,LINE-SEP 0 ,LINE-SEP)))
     ;; for margin-par:
-    "refpara" `((istyle block-halign right scale 3/4))
+    "refpara" `((iset block-halign right scale 3/4))
     ;; ie, "procedure", "syntax", etc in defproc, defform, etc
-    "RBackgroundLabel" `((nstyle float right)
-                         (istyle block-halign right text-base modern color "darkgray"))
+    "RBackgroundLabel" `((nset float right)
+                         (iset block-halign right text-base modern color "darkgray"))
     'command '()
     'multicommand '()
     'never-indents '()
@@ -413,26 +432,26 @@
 
    '(handlers table)
    (hash
-    'boxed     '((nstyle table-full-width #t bgcolor "aliceblue" block-border (top)))
-    'centered  `((istyle block-halign center))
+    'boxed     `((nset table-full-width #t bgcolor "aliceblue" block-border (top)))
+    'centered  `((iset block-halign center))
     'aux       '()
     'block     '()
     'never-indents '())
 
    '(handlers table-cell)
    (hash
-    'left       `((nstyle cell-halign left))
-    'right      `((nstyle cell-halign right))
-    'center     `((nstyle cell-halign center))
-    'top        `((nstyle cell-valign top))
-    'bottom     `((nstyle cell-valign bottom))
-    'vcenter    `((nstyle cell-valign vcenter))
-    'baseline   `((nstyle cell-valign baseline))
-    'border         `((nstyle-update cell-border () ,(iconser 'all)))
-    'left-border    `((nstyle-update cell-border () ,(iconser 'left)))
-    'right-border   `((nstyle-update cell-border () ,(iconser 'right)))
-    'top-border     `((nstyle-update cell-border () ,(iconser 'top)))
-    'bottom-border  `((nstyle-update cell-border () ,(iconser 'bottom))))
+    'left       `((nset cell-halign left))
+    'right      `((nset cell-halign right))
+    'center     `((nset cell-halign center))
+    'top        `((nset cell-valign top))
+    'bottom     `((nset cell-valign bottom))
+    'vcenter    `((nset cell-valign vcenter))
+    'baseline   `((nset cell-valign baseline))
+    'border         `((nset* (push cell-border all)))
+    'left-border    `((nset* (push cell-border left)))
+    'right-border   `((nset* (push cell-border right)))
+    'top-border     `((nset* (push cell-border top)))
+    'bottom-border  `((nset* (push cell-border bottom))))
 
    '(handlers part)
    (hash
@@ -443,23 +462,23 @@
 
    '(handlers slide)
    (hash
-    'widescreen `((nstyle slide-aspect widescreen))
-    'fullscreen `((nstyle slide-aspect fullscreen))
+    'widescreen `((nset slide-aspect widescreen))
+    'fullscreen `((nset slide-aspect fullscreen))
 
-    'auto     `((nstyle slide-layout auto))
-    'center   `((nstyle slide-layout center))
-    'top      `((nstyle slide-layout top))
-    'tall     `((nstyle slide-layout tall))
+    'auto     `((nset slide-layout auto))
+    'center   `((nset slide-layout center))
+    'top      `((nset slide-layout top))
+    'tall     `((nset slide-layout tall))
 
-    'next     `((nstyle slide-mode next))
-    'alt      `((nstyle slide-mode alt))
-    'digress  `((nstyle slide-mode digress))
+    'next     `((nset slide-mode next))
+    'alt      `((nset slide-mode alt))
+    'digress  `((nset slide-mode digress))
 
-    'ignore   `((nstyle slide-ignore ignore))
-    'ignore*  `((nstyle slide-ignore ignore*))
-    'no-ignore `((nstyle slide-ignore no-ignore))
+    'ignore   `((nset slide-ignore ignore))
+    'ignore*  `((nset slide-ignore ignore*))
+    'no-ignore `((nset slide-ignore no-ignore))
 
-    'no-title `((nstyle slide-no-title no-title)))))
+    'no-title `((nset slide-no-title no-title)))))
 
 ;; ------------------------------------------------------------
 

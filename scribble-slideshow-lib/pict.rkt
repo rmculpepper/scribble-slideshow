@@ -42,11 +42,17 @@
 (define (key-value-list? v)
   (and (list? v) (even? (length v))))
 
+(define style-diff-update/c
+  (or/c (list/c 'set symbol? any/c)
+        (list/c 'push symbol? any/c)
+        (list/c 'toggle symbol? any/c)
+        (list/c 'update symbol? any/c procedure?)))
+
 (define style-diff/c
-  (or/c (cons/c 'istyle key-value-list?)
-        (cons/c 'nstyle key-value-list?)
-        (list/c 'update symbol? any/c procedure?)
-        (list/c 'nstyle-update symbol? any/c procedure?)
+  (or/c (cons/c 'iset key-value-list?)
+        (cons/c 'nset key-value-list?)
+        (cons/c 'iset* (listof style-diff-update/c))
+        (cons/c 'nset* (listof style-diff-update/c))
         (cons/c 'stylemap key-value-list?)
         (list/c 'ref (or/c symbol? string?))
         #| (IStyle NStyle -> IStyle NStyle) variant reserved for internal use |#))

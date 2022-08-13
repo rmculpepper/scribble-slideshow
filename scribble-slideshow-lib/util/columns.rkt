@@ -38,7 +38,7 @@
     (match w
       [(? real? w) (values w 0)]
       [(list '= (? real? w)) (values 0 w)]))
-  (define hsp (and hmargin (style-diffs `((nstyle block-margin (,hmargin 0 ,hmargin 0))))))
+  (define hsp (and hmargin (style-diffs `((nset block-margin (,hmargin 0 ,hmargin 0))))))
   (define s* (style+ s (append (if hsp (list hsp) null) (list valign halign))))
   (define b (decode-compound-paragraph pre-flow))
   (col s* relw absw b))

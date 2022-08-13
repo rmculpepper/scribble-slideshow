@@ -27,14 +27,14 @@
    ;; Here we change some base style defaults.
    (current-sp-style (hash-set* (current-sp-style) 'justify #t 'debug '(linebreak)))
    (define talk-style
-     (style #f (list 'widescreen (style-diffs `((istyle text-base roman)))))))
+     (style #f (list 'widescreen (style-diffs `((iset text-base roman)))))))
 
 @title[#:style talk-style]{Demo}
 
 @section{Columns}
 
 @columns[
-#:style (style #f (list (style-diffs `((istyle text-size 24)))))
+#:style (style #f (list (style-diffs `((iset text-size 24)))))
 
 @column[#:width 1 #:valign 'top #:hmargin 5
         #:style 'border]{
@@ -42,7 +42,7 @@ On the @emph{left} side, we have some text, and some more text, and blah blah.
 }
 
 @column[#:width 2 #:valign 'vcenter #:hmargin 5
-        #:style (style #f (list 'border (style-diffs '((istyle bgcolor "yellow")))))]{
+        #:style (style #f (list 'border (style-diffs '((iset bgcolor "yellow")))))]{
 On the @bold{right} side, the text goes on and on. There's a lot of
 text. @emph{Lorem ipsum} levels of text, if you know what I mean.
 }
@@ -53,7 +53,7 @@ text. @emph{Lorem ipsum} levels of text, if you know what I mean.
 
 @centered[
 @compound*[
-#:style (style #f (list (style-diffs '((istyle block-width 900 block-halign left)))))
+#:style (style #f (list (style-diffs '((iset block-width 900 block-halign left)))))
 
 @columns[
 @column[#:style (style #f (list (background-color-property "yellow")))]{
