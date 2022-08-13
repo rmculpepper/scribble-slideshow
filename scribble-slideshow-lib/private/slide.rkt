@@ -187,7 +187,8 @@
 ;; scribble-slides/config : SlideshowConfig Part -> ??
 (define (scribble-slides/config config part)
   (parameterize ((current-resolve-info (get-resolve-info (list part))))
-    (define renderer (new slide-parts-renderer% (config config)))
+    (define renderer
+      (new parts-renderer% (config config) (initial-default-layer initial-default-layer)))
     (send renderer render-part (current-sp-style) part)))
 
 ;; ------------------------------------------------------------
@@ -213,43 +214,11 @@
 
 
 ;; ============================================================
-;; Slide making
-
-(define slide-parts-renderer%
-  (class parts-renderer%
-    (init-field config)
-    (inherit compose-page)
-    (super-new (initial-default-layer initial-default-layer))
-
-    (define/public (make-config title? nstyle)
-      (define aspect (hash-ref nstyle 'slide-aspect #f))
-      (define layout (hash-ref nstyle 'slide-layout #f))
-      (slide-config title? aspect layout))
-
-    ;; (define/override (handle-part-blocks istyle nstyle title blocks st)
-    ;;   (parameterize ((current-slide-config (make-config #t nstyle)))
-    ;;     (super handle-part-blocks istyle nstyle title blocks st)))
-
-    (define/override (emit-page title-p nstyle st layer=>picts)
-      (define aspect (hash-ref nstyle 'slide-aspect #f))
-      (define sconf (make-config (and title-p #t) nstyle))
-      (parameterize ((current-slide-config sconf))
-        (define page (compose-page (send config fullpage) st layer=>picts))
-        (send config slide/full title-p aspect page)))
-    ))
-
-(struct slide-config (title? aspect layout) #:prefab)
-
-;; current-slide-config used to communicate slide properties to default-layer%
-(define current-slide-config
-  (make-parameter (slide-config #t 'fullscreen 'top)))
-
-;; ============================================================
 ;; Default placer for 'auto
 
 (define (layer align/placer zone
                #:z [z 1]
-               #:style [style (hasheq)]
+               #:style [style #f]
                #:pre-decorate [pre-decorator #f]
                #:post-decorate [post-decorator #f])
   (define placer
@@ -263,7 +232,7 @@
                      #:aspect [slide-aspect #f]
                      #:base [slide-zone-symbol 'main]
                      #:z [z 1]
-                     #:style [style (hasheq)]
+                     #:style [style #f]
                      #:pre-decorate [pre-decorator #f]
                      #:post-decorate [post-decorator #f])
   (define base-zone (slide-zone slide-zone-symbol #:aspect slide-aspect))
@@ -281,7 +250,7 @@
     (define auto-layer (layer #:z 0 (overflow-placer #:sep gap) (slide-zone 'main)))
     (define tl-layer (layer #:z 0 (aligned-placer 'ct #:sep gap) (slide-zone 'full)))
 
-    (define/override (place ps lpre base)
+    (define/override (place ps lpre base istyle nstyle)
       (match-define (slide-config title? _ layout) (current-slide-config))
       (define dispatch-lay
         (case layout
@@ -289,7 +258,7 @@
           [(top) (if title? t-top-layer tl-layer)]
           [(tall) (if title? t-tall-layer tl-layer)]
           [(auto #f) auto-layer]))
-      (send dispatch-lay place ps lpre base))
+      (send dispatch-lay place ps lpre base istyle nstyle))
     ))
 
 (define initial-default-layer (new default-layer%))

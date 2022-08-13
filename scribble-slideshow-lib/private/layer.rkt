@@ -26,7 +26,7 @@
 (define layer<%>
   (interface ()
     get-z        ;; -> ExtendedReal
-    update-style ;; IStyle -> IStyle
+    update-style ;; IStyle -> (values IStyle NStyle)
 
     ;; type LayerPre
 
@@ -36,7 +36,7 @@
     update-pre   ;; LayerPre/#f Pict -> LayerPre
     max-pre      ;; LayerPre LayerPre -> LayerPre
 
-    place        ;; (Listof Pict) LayerPre Pict -> Pict
+    place        ;; (Listof Pict) LayerPre Pict IStyle NStyle -> Pict
     ;; Places the contents onto the given base, where base is a full-page pict.
     ))
 
@@ -55,8 +55,7 @@
     (define/public (get-z) z)
 
     (define/public (update-style istyle0)
-      (define-values (istyle _ns) (add*-style style istyle0 #:kind 'layer))
-      istyle)
+      (add*-style style istyle0 #:kind 'layer))
 
     (abstract update-pre)
     (abstract max-pre)
@@ -130,8 +129,8 @@
 
     (define/private (set-width?) (memq 'block-width options))
 
-    ;; place : (Listof Pict) LayerPre Pict -> Pict
-    (define/override (place ps lpre base)
+    ;; place : (Listof Pict) LayerPre Pict IStyle NStyle -> Pict
+    (define/override (place ps lpre base istyle nstyle)
       (define p (combine-picts ps lpre))
       (send zplacer place base (list p)))
 

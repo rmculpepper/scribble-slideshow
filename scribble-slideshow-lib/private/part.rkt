@@ -42,9 +42,13 @@
 ;; - '#f   = (empty, final) -- the default
 ;; - 'digress = (empty, incoming)
 
+;; PreState = (lstate (Hasheqv Layer => {LPre, LPre, (cons IStyle NStyle)}))
+(struct prestate (cur all style) #:prefab)
+
 (define parts-renderer%
   (class object%
-    (init-field initial-default-layer)
+    (init-field config
+                initial-default-layer)
     (super-new)
 
     (define/public (render-parts istyle parts)
@@ -59,6 +63,7 @@
     ;; (Pre)State contains
     ;; - current LPre for each layer -- on current path
     ;; - "max" LPre for each layer -- over all paths, including alt paths
+    ;; - istyle, nstyle for each layer
 
     ;; (Pre)State is mutable; each part renderer holds a reference to its
     ;; pre-state, and by the time the renderer is called, the pre-state contains
@@ -76,22 +81,28 @@
         [else #;(next #f) final-st]))
 
     (define/public (fresh-state)
-      (cons (make-hasheqv) (make-hasheqv)))
+      (prestate (make-hasheqv) (make-hasheqv) (make-hasheqv)))
 
     (define/public (fork-state st)
-      (match-define (cons current-path-st all-paths-st) st)
-      (cons (hash-copy current-path-st) all-paths-st))
+      (match-define (prestate current-path-h all-paths-h styles-h) st)
+      (prestate (hash-copy current-path-h) all-paths-h styles-h))
 
     (define/public (state-ref st lay)
-      (match-define (cons current-path-h all-paths-h) st)
+      (match-define (prestate current-path-h all-paths-h _) st)
       (hash-ref current-path-h lay #f))
 
     (define/public (state-ref/all st lay)
-      (match-define (cons current-path-h all-paths-h) st)
+      (match-define (prestate current-path-h all-paths-h _) st)
       (hash-ref all-paths-h lay #f))
 
-    (define/public (state-set st lay lpre)
-      (match-define (cons current-path-h all-paths-h) st)
+    (define/public (state-styles! st lay [get #f])
+      (match-define (prestate _ _ styles-h) st)
+      (apply values
+             (cond [get (hash-ref! styles-h lay (lambda () (call-with-values get list)))]
+                   [else (hash-ref styles-h lay)])))
+
+    (define/public (state-set! st lay lpre)
+      (match-define (prestate current-path-h all-paths-h _) st)
       (hash-set! current-path-h lay lpre)
       (cond [(hash-ref all-paths-h lay #f)
              => (lambda (old-lpre)
@@ -103,8 +114,7 @@
     ;; handle-parts : IStyle (Listof Part) PreState -> (values PreState PostTx)
     (define/public (handle-parts istyle ps st)
       (define-values (st* txs)
-        (for/fold ([st st] [rtxs null]
-                   #:result (values st (reverse rtxs)))
+        (for/fold ([st st] [rtxs null] #:result (values st (reverse rtxs)))
                   ([p (in-list ps)])
           (define-values (st* tx) (handle-part istyle p st))
           (values st (cons tx rtxs))))
@@ -159,9 +169,10 @@
       (define layer=>pict
         (for/fold ([layer=>pict (hasheq)])
                   ([(lay rblocks) layer=>blocks])
-          (define istyle* (send lay update-style istyle))
+          (define-values (istyle* nstyle*)
+            (state-styles! st lay (lambda () (send lay update-style istyle))))
           (define body-p (flow->pict (reverse rblocks) istyle*))
-          (state-set st lay (send lay update-pre (state-ref st lay) body-p))
+          (state-set! st lay (send lay update-pre (state-ref st lay) body-p))
           (hash-set layer=>pict lay body-p)))
       (define (render post)
         (match-define (cons in-title-p in-layer=>picts) post)
@@ -181,15 +192,31 @@
         [else (let ([istyle (get-title-istyle istyle)])
                 (content->pict title istyle +inf.0))]))
 
+    (define/public (emit-page title-p nstyle st layer=>picts)
+      (define aspect (hash-ref nstyle 'slide-aspect #f))
+      (define sconf (make-config (and title-p #t) nstyle))
+      (parameterize ((current-slide-config sconf))
+        (define page (compose-page (send config fullpage) st layer=>picts))
+        (send config slide/full title-p aspect page)))
+
     (define/public (compose-page base st layer=>picts)
       (for/fold ([base base])
                 ([lay (in-list (sort (hash-keys layer=>picts) layer<?))])
         (define ps (hash-ref layer=>picts lay))
         (define lpre (state-ref/all st lay))
-        (send lay place ps lpre base)))
+        (define-values (istyle nstyle) (state-styles! st lay))
+        (send lay place ps lpre base istyle nstyle)))
 
-    (abstract emit-page)
+    (define/public (make-config title? nstyle)
+      (define aspect (hash-ref nstyle 'slide-aspect #f))
+      (define layout (hash-ref nstyle 'slide-layout #f))
+      (slide-config title? aspect layout))
     ))
+
+;; current-slide-config used to communicate slide properties to default-layer%
+(struct slide-config (title? aspect layout) #:prefab)
+(define current-slide-config
+  (make-parameter (slide-config #t 'fullscreen 'top)))
 
 ;; split-blocks-by-layer : (Listof Block) Layer -> Hash[Layer => (Listof Block), reversed]
 (define (split-blocks-by-layer blocks default-layer)
