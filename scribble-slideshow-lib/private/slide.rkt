@@ -218,31 +218,25 @@
 
 (define (layer align/placer zone
                #:z [z 1]
-               #:style [style #f]
-               #:pre-decorate [pre-decorator #f]
-               #:post-decorate [post-decorator #f])
+               #:style [style #f])
   (define placer
     (cond [(placer? align/placer) align/placer]
           [else (aligned-placer align/placer #:sep GAP)]))
   (define options '(block-width))
-  (new layer% (z z) (style style) (placer placer) (zone zone) (options options)
-       (pre-decorator pre-decorator) (post-decorator post-decorator)))
+  (new layer% (z z) (style style) (placer placer) (zone zone)))
 
 (define (slide-layer align/placer [zone #f]
                      #:aspect [slide-aspect #f]
                      #:base [slide-zone-symbol 'main]
                      #:z [z 1]
-                     #:style [style #f]
-                     #:pre-decorate [pre-decorator #f]
-                     #:post-decorate [post-decorator #f])
+                     #:style [style #f])
   (define base-zone (slide-zone slide-zone-symbol #:aspect slide-aspect))
-  (layer align/placer (if zone (subzone zone base-zone) base-zone)
-         #:z z #:style style #:pre-decorate pre-decorator #:post-decorate post-decorator))
+  (layer align/placer (if zone (subzone zone base-zone) base-zone) #:z z #:style style))
 
 (define default-layer%
   (class h-layer-base%
     (inherit-field gap)
-    (super-new (z 0) (gap GAP) (style (hasheq)))
+    (super-new (z 0) (gap GAP) (style #f))
 
     (define center-layer (layer #:z 0 (aligned-placer 'cc #:sep gap) (slide-zone 'full)))
     (define t-top-layer (layer #:z 0 (aligned-placer 'ct #:sep gap) (slide-zone 'body)))

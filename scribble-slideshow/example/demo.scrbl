@@ -144,14 +144,16 @@ It says @bold{more} things, things that aren't said on the left.
   (require ppict/zone)
   (define left-layer
     (slide-layer 'lt (coord-zone 0.0 1/4 0.38 1)
-                 #:pre-decorate (lambda (p) (p:frame p #:color "red"))))
+                 #:style (let ([post (lambda (p) (p:frame p #:color "red"))])
+                           (style #f (list (style-diffs `((nstyle block-post (,post)))))))))
   (define right-layer
     (slide-layer 'lt (coord-zone 0.4 1/4 1.0 1)
-                 #:post-decorate (lambda (p)
-                                   (define bg
-                                     (p:filled-rectangle (p:pict-width p) (p:pict-height p)
-                                                         #:color "green" #:draw-border? #f))
-                                   (p:cc-superimpose p (p:cellophane bg 0.25))))))
+                 #:style (let ([post (lambda (p)
+                                        (define fp (shadow-frame p #:margin 5 #:shadow-descent 0
+                                                                 #:shadow-alpha-factor 1/2))
+                                        (p:refocus fp p))])
+                           (style #f (list (style-diffs `((nstyle block-padding (5 5 5 5)
+                                                                  block-post (,post))))))))))
 
 @compound*[#:layer left-layer]{
 On the left, we have some text. It says a few things.

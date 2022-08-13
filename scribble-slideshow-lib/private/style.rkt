@@ -53,14 +53,14 @@
 ;; Text styles:
 ;; - 'text-base : (U 'default font% (U 'roman ...) String) -- font face, see `text`
 ;; - 'text-size : Nat
-;; - 'text-mods : (Listof PictTextStyleSymbol) -- see `text`
-;; - 'text-post : (Listof (Pict -> Pict))
+;; - 'text-mods : (Listof PictTextStyleSymbol)  -- see `text`
+;; - 'text-post : (Listof (Pict -> Pict))       -- dimension-preserving!
 
 ;; Content styles:
 ;; - 'color : (U #f String color%)
-;; - 'bgcolor : (U #f String color%) -- fixme: replace with an elem-post?
+;; - 'bgcolor : (U #f String color%)
 ;; - 'white-space : #f | 'pre | 'pre-wrap | 'nowrap
-;; - 'elem-post : (Listof (Pict -> Pict))
+;; - 'elem-post : (Listof (Pict -> Pict))       -- dimension-preserving!
 ;; - 'scale : NNReal
 
 ;; Para styles:
@@ -105,6 +105,7 @@
 ;; - 'block-margin : (Listof*4 Real)
 ;; - 'block-padding : (Listof*4 Real)
 ;; - 'bgcolor : (U String color%)
+;; - 'block-post : (Listof (Pict -> Pict))  -- dimension-preserving!
 
 ;; Itemization keys:
 ;; - 'itemization-mode : (U #f 'ordered)
@@ -127,6 +128,18 @@
 ;; - no-title : 'no-title | #f
 ;; - maker    : (-> Void)
 
+;; Accessors
+(define (get-block-margins nstyle)
+  (to-ltrb 'get-block-margins (or (hash-ref nstyle 'block-margin #f) 0)))
+(define (get-block-padding nstyle)
+  (to-ltrb 'get-block-padding (or (hash-ref nstyle 'block-padding #f) 0)))
+
+(define (to-ltrb who v)
+  (match v
+    [(list l t r b) (values l t r b)]
+    [(list lr tb) (values lr tb lr tb)]
+    [(? real? n) (values n n n n)]
+    [_ (error who "bad value: ~e" v)]))
 
 ;; ============================================================
 ;; StyleDiffs

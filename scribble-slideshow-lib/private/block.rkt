@@ -348,18 +348,28 @@
 
 ;; call/block-style : IStyle NStyle (IStyle -> RenderedBlock) -> RenderedBlock
 (define (call/block-style istyle nstyle proc)
-  (match-define (list ml mt mr mb) (or (hash-ref nstyle 'block-margin #f) '(0 0 0 0)))
-  (match-define (list pl pt pr pb) (or (hash-ref nstyle 'block-padding #f) '(0 0 0 0)))
+  (define istyle* (prep-block-styles istyle nstyle))
+  (apply-block-styles (proc istyle*) istyle nstyle))
+
+;; prep-block-styles : IStyle NStyle -> IStyle
+(define (prep-block-styles istyle nstyle)
+  (define-values (ml mt mr mb) (get-block-margins nstyle))
+  (define-values (pl pt pr pb) (get-block-padding nstyle))
+  (istyle-adjust-block-width istyle (- 0 ml mr pl pr)))
+
+;; apply-block-styles : Pict IStyle NStyle -> Pict
+(define (apply-block-styles p istyle nstyle)
+  (define-values (ml mt mr mb) (get-block-margins nstyle))
+  (define-values (pl pt pr pb) (get-block-padding nstyle))
   (define istyle* (istyle-adjust-block-width istyle (- 0 ml mr pl pr)))
-  (let* ([p (proc istyle*)]
-         [p (apply-base-block-styles p istyle* nstyle)]
+  (let* ([p (apply-block-styles/pre-padding p istyle nstyle)]
          [p (inset p pl pt pr pb)]
-         [p (apply-padded-block-styles p istyle* nstyle)]
+         [p (apply-block-styles/post-padding p istyle nstyle)]
          [p (inset p ml mt mr mb)])
     p))
 
-;; apply-base-block-styles : Pict IStyle NStyle -> Pict
-(define (apply-base-block-styles p istyle nstyle)
+;; apply-block-styles/pre-padding : Pict IStyle NStyle -> Pict
+(define (apply-block-styles/pre-padding p istyle nstyle)
   (define w (get-block-width istyle))
   (cond [(< w +inf.0)
          (define dwidth (- w (pict-width p)))
@@ -369,15 +379,15 @@
            [(center) (inset p (/ dwidth 2) 0)])]
         [else p]))
 
-;; apply-padded-block-styles : Pict IStyle NStyle -> Pict
-(define (apply-padded-block-styles p istyle nstyle)
+;; apply-block-styles/post-padding : Pict IStyle NStyle -> Pict
+(define (apply-block-styles/post-padding p istyle nstyle)
   (let* ([p (cond [(hash-ref nstyle 'bgcolor #f)
                    => (lambda (c) (bg-colorize p c))]
                   [else p])]
          [p (cond [(hash-ref nstyle 'block-border #f)
                    => (lambda (borders) (add-borders p borders))]
                   [else p])])
-    p))
+    (foldr (lambda (post p) (post p)) p (hash-ref nstyle 'block-post null))))
 
 ;; add-borders : Pict (Listof Symbol) -> Pict
 (define (add-borders p borders)

@@ -9,7 +9,8 @@
          ppict/align
          ppict/zone
          (only-in ppict/private/ppict associative-placer<%>)
-         "style.rkt")
+         "style.rkt"
+         "block.rkt")
 (provide (all-defined-out))
 
 ;; Note: this module does not depend on slide.rkt or slideshow. See slide.rkt
@@ -109,10 +110,7 @@
 (define layer%
   (class h-layer-base%
     (init-field placer  ;; Placer, mainly RefpointPlacer + OverflowPlacer
-                zone    ;; Zone, used to update style with width?
-                options ;; (Listof Symbol), like 'block-width
-                [pre-decorator #f]   ;; Pict -> Pict
-                [post-decorator #f]) ;; Pict -> Pict
+                zone)   ;; Zone, used to update style with width?
     (super-new (gap (send placer get-sep)))
 
     (define zplacer (subplacer placer zone))
@@ -123,25 +121,27 @@
 
     (define/override (update-style istyle)
       (let-values ([(w h x y) (send zone get-zone (blank))])
-        (let* ([istyle (hash-set istyle 'layer-width w)]
-               [istyle (if (set-width?) (hash-set istyle 'block-width w) istyle)])
-          (super update-style istyle))))
-
-    (define/private (set-width?) (memq 'block-width options))
+        (let ([istyle (hash-set* istyle 'layer-width w 'block-width w)])
+          (let-values ([(istyle nstyle) (super update-style istyle)])
+            (values (prep-layer-styles istyle nstyle) nstyle)))))
 
     ;; place : (Listof Pict) LayerPre Pict IStyle NStyle -> Pict
     (define/override (place ps lpre base istyle nstyle)
-      (define p (combine-picts ps lpre))
+      (define p (combine-picts ps lpre istyle nstyle))
       (send zplacer place base (list p)))
 
     ;; combine-picts : (Listof Pict) LayerPre -> Pict
-    (define/public (combine-picts ps lpre)
+    (define/public (combine-picts ps lpre istyle nstyle)
       (define-values (p _newsep) (send placer compose-elements ps))
-      (define dp (pre-decorate p))
-      (post-decorate (inset-to/align dp #f lpre 'ct)))
+      (let* ([p (pre-decorate p)]
+             [p (inset-to/align p #f lpre 'ct)])
+        (apply-layer-styles p istyle nstyle)))
 
-    (define/public (pre-decorate p)
-      (if pre-decorator (pre-decorator p) p))
-    (define/public (post-decorate p)
-      (if post-decorator (post-decorator p) p))
+    (define/public (pre-decorate p) p) ;; FIXME?
     ))
+
+(define (prep-layer-styles istyle nstyle)
+  (prep-block-styles istyle nstyle))
+
+(define (apply-layer-styles p istyle nstyle)
+  (apply-block-styles p istyle nstyle))
