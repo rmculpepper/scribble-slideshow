@@ -177,7 +177,7 @@
      (values (foldl styles-update1/upd istyle upds) nstyle)]
     [(list* 'nset* upds)
      (values istyle (foldl styles-update1/upd nstyle upds))]
-    [(list 'stylemap kvs)
+    [(list* 'stylemap kvs)
      (let ([stylemap (apply hash-set* (hash-ref istyle 'styles) kvs)])
        (values (hash-set istyle 'styles stylemap) nstyle))]
     [(list 'ref style-name)
@@ -202,6 +202,10 @@
      (let ([vs (hash-ref instyle key null)])
        (cond [(member value vs) (hash-set instyle (remove value vs))]
              [else (hash-set instyle key (cons value vs))]))]
+    [(list 'remove key value)
+     (let ([vs (hash-ref instyle key null)])
+       (cond [(member value vs) (hash-set instyle (remove value vs))]
+             [else instyle]))]
     [(list 'update key default (? procedure? update))
      (hash-update instyle key update default)]
     [_ (error 'styles-update1/upd "bad style-diff update: ~e" upd)]))
@@ -329,50 +333,57 @@
 (define initial-stylemap
   (hash
    ;; ----------------------------------------
+   ;; Common style hooks:
+
+   'modernfont `((iset text-base modern))
+   'romanfont  `((iset text-base roman))
+   'swissfont  `((iset text-base swiss))
+
+   ;; ----------------------------------------
    ;; Standard content style names:
 
    'italic      `((iset* (push text-mods italic)))
    'bold        `((iset* (push text-mods bold)))
-   'subscript   `((iset* (push text-mods subscript)))
-   'superscript `((iset* (push text-mods superscript)))
-   'combine     `((iset* (push text-mods combine)))
-   'no-combine  `((iset* (push text-mods no-combine)))
-   'align       `((iset* (push text-mods align)))
-   'unaligned   `((iset* (push text-mods unaligned)))
+   'subscript   `((iset* (push text-mods subscript)   (remove text-mods superscript)))
+   'superscript `((iset* (push text-mods superscript) (remove text-mods subscript)))
+   'combine     `((iset* (push text-mods combine)     (remove text-mods no-combine)))
+   'no-combine  `((iset* (push text-mods no-combine)  (remove text-mods combine)))
+   'align       `((iset* (push text-mods align)       (remove text-mods unaligned)))
+   'unaligned   `((iset* (push text-mods unaligned)   (remove text-mods align)))
 
    'emph     `((iset* (toggle text-mods italic)))
-   'tt       `((iset text-base modern))
-   'sf       `((iset text-base swiss))
-   'roman    `((iset text-base roman))
+   'tt       `((ref modernfont))
+   'sf       `((ref swissfont))
+   'roman    `((ref romanfont))
    'larger   `((iset* (update scale 1 ,(lambda (v) (* 3/2 v)))))
    'smaller  `((iset* (update scale 1 ,(lambda (v) (* 2/3 v)))))
-   "RktBlk"  `((iset text-base modern white-space pre))
-   "RktCmt"  `((iset text-base modern color (#xC2 #x74 #x1F)))
-   "RktErr"  `((ref italic) (iset text-base modern color "red"))
-   "RktIn"   `((iset text-base modern color (#xCC #x66 #x33)))
-   "RktKw"   `((iset text-base modern color "black"))
-   "RktMeta" `((iset text-base modern color "black"))
-   "RktMod"  `((iset text-base modern))
-   "RktOut"  `((iset text-base modern color (#x96 #x00 #x96)))
+   "RktBlk"  `((ref modernfont) (iset white-space pre))
+   "RktCmt"  `((ref modernfont) (iset color (#xC2 #x74 #x1F)))
+   "RktErr"  `((ref modernfont) (ref italic) (iset color "red"))
+   "RktIn"   `((ref modernfont) (iset color (#xCC #x66 #x33)))
+   "RktKw"   `((ref modernfont) (iset color "black"))
+   "RktMeta" `((ref modernfont) (iset color "black"))
+   "RktMod"  `((ref modernfont))
+   "RktOut"  `((ref modernfont) (iset color (#x96 #x00 #x96)))
    "RktOpt"  `((ref italic) (iset color "black"))
-   "RktPn"   `((iset text-base modern color (#x84 #x3C #x24)))
-   "RktRes"  `((iset text-base modern color (#x00 #x00 #xAF)))
-   "RktRdr"  `((iset text-base modern))
-   "RktSym"  `((iset text-base modern
-                     ;; Scribble renders in black, but DrRacket in dark blue.
-                     ;; I think dark blue is a better contrast with slide text.
-                     color (#x00 #x00 #x80)))
-   "RktVar"  `((ref italic) (iset text-base modern color (#x44 #x44 #x44)))
-   "RktVal"  `((iset text-base modern color (#x22 #x8B #x22)))
+   "RktPn"   `((ref modernfont) (iset color (#x84 #x3C #x24)))
+   "RktRes"  `((ref modernfont) (iset color (#x00 #x00 #xAF)))
+   "RktRdr"  `((ref modernfont))
+   "RktSym"  `((ref modernfont)
+               ;; Scribble renders in black, but DrRacket in dark blue.
+               ;; I think dark blue is a better contrast with slide text.
+               (iset color (#x00 #x00 #x80)))
+   "RktVar"  `((ref modernfont) (ref italic) (iset color (#x44 #x44 #x44)))
+   "RktVal"  `((ref modernfont) (iset color (#x22 #x8B #x22)))
    "RktInBG" `((iset bgcolor "lightgray"))
    "defmodule"   `((iset bgcolor (#xEB #xF0 #xF4)))
    "highlighted" `((iset bgcolor (#xFF #xEE #xEE)))
    "Rfiletitle"  `((iset bgcolor (#xEE #xEE #xEE)))
    "SCentered"   `((iset block-halign center))
    'no-break `((iset white-space nowrap))
-   'hspace   `((iset text-base modern white-space pre))
+   'hspace   `((ref modernfont) (iset white-space pre))
 
-   "Rkt*Def"    `((iset text-base modern color "black" text-mods (bold)))
+   "Rkt*Def"    `((ref modernfont) (iset color "black" text-mods (bold)))
    "RktStxDef"  `((ref "Rkt*Def"))
    "RktSymDef"  `((ref "Rkt*Def"))
    "RktValDef"  `((ref "Rkt*Def"))
@@ -418,7 +429,8 @@
     "refpara" `((iset block-halign right scale 3/4))
     ;; ie, "procedure", "syntax", etc in defproc, defform, etc
     "RBackgroundLabel" `((nset float right)
-                         (iset block-halign right text-base modern color "darkgray"))
+                         (ref modernfont)
+                         (iset block-halign right color "darkgray"))
     'command '()
     'multicommand '()
     'never-indents '()
