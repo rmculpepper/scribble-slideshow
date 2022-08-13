@@ -30,15 +30,6 @@
                               [else (hash-set h2 key v1)])))]
           [else (values h1 h2)])))
 
-(define (style+ s props)
-  (match s
-    [(s:style style-name props0)
-     (s:style style-name (if (null? props) props0 (append props0 props)))]
-    [(? symbol?) (s:style s props)]
-    [(? string?) (s:style s props)]
-    [(? sp-style-prop?) (s:style #f (cons s props))]
-    [#f (if (null? props) s:plain (s:style #f props))]))
-
 ;; ============================================================
 ;; IStyle (aka SP-Style)
 
@@ -225,14 +216,25 @@
 ;; ============================================================
 ;; Interpreting Scribble Styles
 
-;; Style properties
-(struct text-post-property (post))
-(struct elem-post-property (post))
-(struct style-transformer (f)) ;; FIXME: delete!!!!
-(struct style-diffs (diffs))
-
+;; prop:sp-style-prop : prop of (Self IStyle NStyle -> (values IStyle NStyle))
 (define-values (prop:sp-style-prop sp-style-prop? sp-style-prop-ref)
   (make-struct-type-property 'scribble-pict-style-property))
+
+;; Style properties
+(struct style-diffs (diffs)
+  #:property prop:sp-style-prop
+  (lambda (self istyle nstyle)
+    (styles-update istyle nstyle (style-diffs-diffs self))))
+
+;; style+ : StyleLike List -> Style
+(define (style+ s props)
+  (match s
+    [(s:style style-name props0)
+     (s:style style-name (if (null? props) props0 (append props0 props)))]
+    [(? symbol?) (s:style s props)]
+    [(? string?) (s:style s props)]
+    [(? sp-style-prop?) (s:style #f (cons s props))]
+    [#f (if (null? props) s:plain (s:style #f props))]))
 
 ;; add*-style : Style IStyle NStyle -> (values IStyle NStyle)
 (define (add*-style s istyle [nstyle #hasheq()] #:kind [kind #f])
@@ -240,30 +242,23 @@
   (match s
     [(s:style name props)
      (define-values (istyle1 nstyle1)
-       (add*-simple-style name istyle nstyle #:handlers handlers))
+       (add*-style1 name istyle nstyle #:handlers handlers))
      (for/fold ([istyle istyle1] [nstyle nstyle1])
                ([prop (in-list props)])
-       (add*-style-prop prop istyle nstyle #:handlers handlers))]
-    [s (add*-simple-style s istyle nstyle #:handlers handlers)]))
+       (add*-style1 prop istyle nstyle #:handlers handlers))]
+    [s (add*-style1 s istyle nstyle #:handlers handlers)]))
 
-;; add*-simple-style : (U #f Symbol String) IStyle NStyle -> (values IStyle NStyle)
-(define (add*-simple-style style-name istyle nstyle #:handlers handlers)
-  (cond [(eq? style-name #f) (values istyle nstyle)]
-        [(istyle-stylemap-ref istyle style-name #f)
-         => (lambda (diffs) (styles-update istyle nstyle diffs))]
-        [(hash-ref handlers style-name #f)
-         => (lambda (diffs) (styles-update istyle nstyle diffs))]
-        [else
-         (when #t (log-scribble-slideshow-warning "add-style: ignoring: ~e" style-name))
-         (values istyle nstyle)]))
-
-;; add*-style-prop : Any IStyle NStyle -> (values IStyle NStyle)
-(define (add*-style-prop prop istyle nstyle #:handlers handlers)
-  (match prop
-    [(text-post-property post)
-     (values (hash-cons istyle 'text-post post) nstyle)]
-    [(elem-post-property post)
-     (values (hash-cons istyle 'elem-post post) nstyle)]
+;; add*-style1 : Any IStyle NStyle -> (values IStyle NStyle)
+(define (add*-style1 v istyle nstyle #:handlers handlers)
+  (match v
+    [#f (values istyle nstyle)]
+    [(? (lambda (v) (or (symbol? v) (string? v))))
+     (cond [(or (hash-ref handlers v #f)
+                (istyle-stylemap-ref istyle v #f))
+            => (lambda (diffs) (styles-update istyle nstyle diffs))]
+           [else (values istyle (hash-cons nstyle 'unhandled v))])]
+    [(? sp-style-prop?)
+     ((sp-style-prop-ref v) v istyle nstyle)]
     [(s:color-property color)
      (values (hash-set istyle 'color (to-color color)) nstyle)]
     [(s:background-color-property color)
@@ -272,23 +267,10 @@
      (values istyle (hash-set nstyle 'table-cell-styless cell-styless))]
     [(s:table-columns col-styles)
      (values istyle (hash-set nstyle 'table-col-styles col-styles))]
-    [(style-diffs diffs)
-     (styles-update istyle nstyle diffs)]
-    [(style-transformer f) ;; FIXME: delete!
-     (values (f istyle) nstyle)]
-    [(? sp-style-prop?)
-     ((sp-style-prop-ref prop) prop istyle nstyle)]
     [(? s:css-addition?) (values istyle nstyle)]
     [(? s:tex-addition?) (values istyle nstyle)]
     ;; ----
-    [_
-     (cond [(hash-ref handlers prop #f)
-            => (lambda (diffs) (styles-update istyle nstyle diffs))]
-           [(istyle-stylemap-ref istyle prop #f)
-            => (lambda (diffs) (styles-update istyle nstyle diffs))]
-           [else
-            (when #f (log-scribble-slideshow-warning "add*-style-prop: ignoring: ~e" prop))
-            (values istyle (hash-cons nstyle 'unhandled prop))])]))
+    [_ (values istyle (hash-cons nstyle 'unhandled v))]))
 
 ;; ============================================================
 

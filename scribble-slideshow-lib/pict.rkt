@@ -13,14 +13,14 @@
 
 (provide (contract-out
           [flow-pict
-           (->* [] [#:style (or/c #f s:style? symbol? string?) #:resolve? boolean?]
+           (->* [] [#:style style-like/c #:resolve? boolean?]
                 #:rest (listof s:pre-flow?)
                 pict?)]
           [scribble-slide-picts
            (-> s:part? (listof pict?))]
 
           [compound*
-           (->* [] [#:style (or/c #f s:style? symbol? string?) #:layer (or/c #f layer?)]
+           (->* [] [#:style style-like/c #:layer (or/c #f layer?)]
                 #:rest (listof s:pre-flow?)
                 s:block?)]
           [part/make-slides
@@ -39,6 +39,9 @@
          slide-layer
          slide-zone)
 
+(define style-like/c
+  (or/c s:style? string? symbol? #f sp-style-prop?))
+
 (define (key-value-list? v)
   (and (list? v) (even? (length v))))
 
@@ -55,5 +58,10 @@
         (cons/c 'iset* (listof style-diff-update/c))
         (cons/c 'nset* (listof style-diff-update/c))
         (cons/c 'stylemap key-value-list?)
-        (list/c 'ref (or/c symbol? string?))
-        #| (IStyle NStyle -> IStyle NStyle) variant reserved for internal use |#))
+        (list/c 'ref (or/c symbol? string?))))
+
+(begin ;; compat
+  (define (text-post-property post)
+    (style-diffs `((iset* (push text-post ,post)))))
+  (define (elem-post-property post)
+    (style-diffs `((iset* (push elem-post ,post))))))
