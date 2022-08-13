@@ -24,37 +24,6 @@
 
 @(begin
 
-  ;; FIXME: maybe just add style option(s) to tabular to set column
-  ;; widths, row heights (absolute or fractional?)
-
-  (define (columns #:sep [sep #f] . cols)
-    (local-require (only-in slideshow client-w))
-    (define (calc-sep)
-      (define total-free-w (- client-w (apply + (map p:pict-width cols))))
-      (max 0
-           #;(/ total-free-w (+ 2 (length cols)))
-           (/ total-free-w (+ 1 (length cols)))))
-    (#;values centered (apply p:ht-append (or sep (calc-sep)) cols)))
-
-  (define (column #:width wfraction #:hmargin [hmargin 24] . pre-flow)
-    (local-require (only-in slideshow client-w))
-    (define istyle (current-sp-style))
-    (parameterize ((current-sp-style
-                    (hash-set* istyle
-                               'block-width (- (* client-w wfraction) hmargin))))
-      (p:frame (apply flow-pict pre-flow))))
-
-   #;
-   (let ()
-     (local-require slideshow)
-     (define old-assembler (current-slide-assembler))
-     (define (assembler tp sep body)
-       (let ([tp (if (string? tp) (titlet tp) tp)]
-             [body (vl-append 0 body (blank client-w 0))])
-       (cond [(pict? tp) (vl-append sep tp body)]
-             [else body])))
-     (current-slide-assembler assembler))
-
    ;; Here are some basic helper functions for constructing elements with text
    ;; or background colors, using Scribble's built-in style properties.
 
@@ -139,11 +108,13 @@ It says @bold{more} things, things that aren't said on the left.
 @section{Two-column slides using layers}
 
 @(begin
-  (require ppict/zone)
+  (require ppict/zone (only-in racket/draw make-color))
+  (define sd-t-red (style-diffs `((iset bgcolor (255 0 0 0.1)))))
   (define left-layer
     (slide-layer 'lt (coord-zone 0.0 1/4 0.38 1)
                  #:style (let ([post (lambda (p) (p:frame p #:color "red"))])
-                           (style #f (list (style-diffs `((nset block-post (,post)))))))))
+                           (style #f (list sd-t-red
+                                           (style-diffs `((nset block-post (,post)))))))))
   (define right-layer
     (slide-layer 'lt (coord-zone 0.4 1/4 1.0 1)
                  #:style (let ([post (lambda (p)
@@ -154,7 +125,8 @@ It says @bold{more} things, things that aren't said on the left.
                                                                 block-post (,post))))))))))
 
 @compound*[#:layer left-layer]{
-On the left, we have some text. It says a few things.
+On the left, we have some text.
+It says a @elem[#:style (style #f (list sd-t-red))]{few} things.
 }
 
 @compound*[#:layer right-layer]{

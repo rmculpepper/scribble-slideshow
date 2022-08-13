@@ -46,7 +46,8 @@
   (or/c (list/c 'set symbol? any/c)
         (list/c 'push symbol? any/c)
         (list/c 'toggle symbol? any/c)
-        (list/c 'update symbol? any/c procedure?)))
+        (list/c 'update symbol? any/c procedure?)
+        (list/c 'setf symbol? procedure?)))
 
 (define style-diff/c
   (or/c (cons/c 'iset key-value-list?)

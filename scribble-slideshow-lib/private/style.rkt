@@ -6,6 +6,7 @@
          racket/list
          racket/hash
          racket/class
+         (only-in racket/draw color% make-color)
          (prefix-in s: scribble/core)
          (prefix-in s: scribble/html-properties)
          (prefix-in s: scribble/latex-properties)
@@ -35,6 +36,7 @@
      (s:style style-name (if (null? props) props0 (append props0 props)))]
     [(? symbol?) (s:style s props)]
     [(? string?) (s:style s props)]
+    [(? sp-style-prop?) (s:style #f (cons s props))]
     [#f (if (null? props) s:plain (s:style #f props))]))
 
 ;; ============================================================
@@ -159,6 +161,7 @@
 ;; - (list 'iadd Symbol Value)
 ;; - (list 'toggle Symbol Value)
 ;; - (list 'update Symbol Value (Value -> Value))
+;; - (list 'setf Symbol (Hash -> Value))
 
 ;; styles-update : IStyle NStyle StyleDiffs -> (values IStyle NStyle)
 (define (styles-update istyle nstyle diffs)
@@ -208,6 +211,8 @@
              [else instyle]))]
     [(list 'update key default (? procedure? update))
      (hash-update instyle key update default)]
+    [(list 'setf key get-value)
+     (hash-set instyle key (get-value instyle))]
     [_ (error 'styles-update1/upd "bad style-diff update: ~e" upd)]))
 
 ;; istyle-stylemap-ref : IStyle Any Default -> (U StyleDiffs Default)
@@ -397,8 +402,7 @@
    ;; Standard block styles:
 
    ;; 'compact generalized from itemization to all block forms
-   'compact `(,(lambda (istyle nstyle)
-                 (values (hash-set istyle 'block-sep (get-line-sep istyle)) nstyle)))
+   'compact `((iset* (setf block-sep ,(lambda (istyle) (get-line-sep istyle)))))
 
    ;; ----------------------------------------
    ;; Custom styles:
@@ -428,9 +432,8 @@
     ;; for margin-par:
     "refpara" `((iset block-halign right scale 3/4))
     ;; ie, "procedure", "syntax", etc in defproc, defform, etc
-    "RBackgroundLabel" `((nset float right)
-                         (ref modernfont)
-                         (iset block-halign right color "darkgray"))
+    "RBackgroundLabel" `((iset block-halign right color "darkgray")
+                         (ref modernfont) (nset float right))
     'command '()
     'multicommand '()
     'never-indents '()
@@ -494,10 +497,16 @@
 
 ;; ------------------------------------------------------------
 
-(define (to-color color) color) ;; FIXME
+(define (to-color c)
+  (cond [(is-a? c color%) c]
+        [(string? c) c]
+        [(list? c) (apply make-color c)]
+        [else (error 'to-color "bad color: ~e" c)]))
 
 (define (bg-colorize p c)
-  (pin-under p 0 0 (filled-rectangle (pict-width p) (pict-height p) #:draw-border? #f #:color c)))
+  (pin-under p 0 0
+             (filled-rectangle (pict-width p) (pict-height p)
+                               #:draw-border? #f #:color (to-color c))))
 
 ;; ------------------------------------------------------------
 
