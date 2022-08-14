@@ -15,7 +15,6 @@
 
 #lang scribble-slideshow
 @(require (prefix-in p: pict)
-          scribble-slideshow/util/columns
           (only-in slideshow [slide s:slide] [para s:para])
           pict/shadow
           scribble/core
@@ -23,44 +22,66 @@
           scribble/manual
           (for-label racket/base))
 
-@(define talk-style
-   (style #f (list (style-diffs '((iset text-base roman justify #t debug (linebreak)))))))
+@(begin
+
+  ;; FIXME: maybe just add style option(s) to tabular to set column
+  ;; widths, row heights (absolute or fractional?)
+
+  (define (columns #:sep [sep #f] . cols)
+    (local-require (only-in slideshow client-w))
+    (define (calc-sep)
+      (define total-free-w (- client-w (apply + (map p:pict-width cols))))
+      (max 0
+           #;(/ total-free-w (+ 2 (length cols)))
+           (/ total-free-w (+ 1 (length cols)))))
+    (#;values centered (apply p:ht-append (or sep (calc-sep)) cols)))
+
+  (define (column #:width wfraction #:hmargin [hmargin 24] . pre-flow)
+    (local-require (only-in slideshow client-w))
+    (define istyle (current-sp-style))
+    (parameterize ((current-sp-style
+                    (hash-set* istyle
+                               'block-width (- (* client-w wfraction) hmargin))))
+      (p:frame (apply flow-pict pre-flow))))
+
+   #;
+   (let ()
+     (local-require slideshow)
+     (define old-assembler (current-slide-assembler))
+     (define (assembler tp sep body)
+       (let ([tp (if (string? tp) (titlet tp) tp)]
+             [body (vl-append 0 body (blank client-w 0))])
+       (cond [(pict? tp) (vl-append sep tp body)]
+             [else body])))
+     (current-slide-assembler assembler))
+
+   ;; Here are some basic helper functions for constructing elements with text
+   ;; or background colors, using Scribble's built-in style properties.
+
+   (define (blue . content)
+     (apply elem #:style (style #f (list (color-property "blue"))) content))
+   (define (on-pink . content)
+     (apply elem #:style (style #f (list (background-color-property "pink"))) content))
+
+   ;; Here are some helpers that uses scribble-slideshow's `text-post-property`
+   ;; to apply a post-transformation to the pict(s) rendered from the element.
+
+   (define (tx-elem f . content)
+     (apply elem #:style (style #f (list (text-post-property f))) content))
+
+   (define ((shadow-tx rad dxy [color "purple"]) p)
+     (shadow p rad dxy dxy #:shadow-color color))
+
+   ;; Here we change some base style defaults.
+
+   ;(current-sp-style (hash-set* (current-sp-style) 'justify #t 'debug '(linebreak)))
+
+   (define talk-style
+     (style #f (list 'widescreen
+                     (style-diffs
+                      '((iset text-base roman justify #t debug (linebreak))))))))
 
 @title[#:style talk-style]{Demo of @racketmodname[scribble-slideshow] language}
-
-The @racketmodname[scribble-slideshow] language lets you write slideshow
-presentations using Scribble notation and structures.
-
-This slide consists of a Scribble @bold{flow}, which contains multiple
-@bold{paragraphs}. Each @bold{paragraph} consists of @bold{content}:
-@emph{elements and other stuff}.
-
-@section{Styles}
-
-@(begin
-   ;; Defining a style for use with `elem`, etc.
-   (define blue-style (style #f (list (color-property "blue"))))
-   ;; Defining an `elem`-like wrapper function that applies a style.
-   (define (hl . content)
-     (apply elem #:style (style #f (list (background-color-property "yellow"))) content)))
-
-The appearance of @bold{content} is determined by Scribble @bold{styles}:
-@itemlist[
-
-@item{@emph{Style properties} like @racket[color-property] and
-@racket[background-color-property] @elem[#:style blue-style]{affect individual
-aspects of @hl{text rendering} and @hl{document layout}}.}
-
-@item{A @emph{style name} like @racket["RktErr"] bundles @elem[#:style
-"RktErr"]{many style changes into a single package}.}
-
-]
-
-
-
-@;{
-
-@section{blah}
 
 This whole slide consists of a @italic{flow}, which contains multiple
 @tt{paragraphs}. In turn, @tt{paragraphs} consist of
@@ -255,4 +276,3 @@ This is a slide with @racket['tall] layout, even though it doesn't contain much.
 @section[]      @; An empty section name generates a slide with no title.
 
 That's the end!
-}
