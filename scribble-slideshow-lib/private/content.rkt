@@ -165,8 +165,8 @@
                    ;; FIXME: get stretch/shrink from istyle
                    (append (reverse (make-glue seg-pict mode)) acc)]
                   [else (error 'content->items "unhandled wsmode ~e" wsmode)])]
-               [(regexp-match? #rx"[\u00AD]" seg)
-                ;; FIXME: get hyphenation mode from istyle
+               [#t ;; FIXME: get hyphenation mode from istyle
+                ;; TODO: support hyphenation dictionary
                 (append (reverse (hyphenations seg istyle)) acc)]
                [else
                 (cons (make-box (base-content->pict seg istyle)) acc)]))]
@@ -206,10 +206,27 @@
 
 ;; hyphenations : String IStyle -> (Listof Item)
 (define (hyphenations str istyle)
-  (define hyphen-penalty (make-hyphen-penalty (base-content->pict "-" istyle)))
-  (define parts (map (lambda (s) (make-box (base-content->pict s istyle)))
-                     (string-split str "\U00AD" #:trim? #f)))
-  (add-between parts hyphen-penalty))
+  (define (to-box str)  ;; String -> Item
+    (make-box (base-content->pict str istyle)))
+  ;; If there are any hard hyphens, ignore soft hyphens.
+  (cond [(regexp-match? #rx"-" str)
+         (define hard-hyphen-penalty (make-hyphen-penalty (blank)))
+         (define parts (hard-hyphenate str))
+         (add-between (map to-box parts) hard-hyphen-penalty)]
+        [(regexp-match? #rx"\U00AD" str)
+         (define soft-hyphen-penalty (make-hyphen-penalty (base-content->pict "-" istyle)))
+         (define parts (soft-hyphenate str))
+         (add-between (map to-box parts) soft-hyphen-penalty)]
+        [else (list (to-box str))]))
+
+(define (soft-hyphenate str)
+  (define soft-hyphen-rx #px"[\U00AD]")
+  (string-split str soft-hyphen-rx #:trim? #f))
+
+(define (hard-hyphenate str)
+  ;; hard hyphen is eligible only if 2 alpha chars before and after
+  (define hard-hyphen-rx #px"(?<=[[:alpha:]]{2}-)(?=[[:alpha:]]{2})")
+  (string-split str hard-hyphen-rx #:trim? #f))
 
 ;; A Segment is a String that contains either
 ;; - no whitespace characters

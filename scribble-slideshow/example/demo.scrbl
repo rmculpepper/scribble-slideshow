@@ -48,8 +48,8 @@ The appearance of @bold{content} is determined by Scribble @bold{styles}:
 @itemlist[
 
 @item{@emph{Style properties} like @racket[color-property] and
-@racket[background-color-property] @elem[#:style blue-style]{affect individual
-aspects of @hl{text rendering} and @hl{document layout}}.}
+@racket[background-color-property] @elem[#:style blue-style]{affect
+individual aspects of @hl{text rendering} and @hl{document layout}}.}
 
 @item{A @emph{style name} like @racket["RktErr"] bundles @elem[#:style
 "RktErr"]{many style changes into a single package}.}
