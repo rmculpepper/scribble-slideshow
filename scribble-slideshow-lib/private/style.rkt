@@ -3,15 +3,12 @@
 
 #lang racket/base
 (require racket/match
-         racket/list
-         racket/hash
          racket/class
          (only-in racket/draw color% make-color)
          (prefix-in s: scribble/core)
          (prefix-in s: scribble/html-properties)
          (prefix-in s: scribble/latex-properties)
-         (prefix-in s: scribble/decode)
-         pict pict/convert)
+         pict)
 (provide (all-defined-out))
 
 (define-logger scribble-slideshow)

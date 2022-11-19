@@ -7,9 +7,6 @@
          racket/string
          racket/format
          (prefix-in s: scribble/core)
-         (prefix-in s: scribble/html-properties)
-         (prefix-in s: scribble/latex-properties)
-         (prefix-in s: scribble/decode)
          pict pict/convert
          "style.rkt"
          "linebreak.rkt")

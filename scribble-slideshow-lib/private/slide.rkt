@@ -3,21 +3,13 @@
 
 #lang racket/base
 (require racket/match
-         racket/list
          racket/class
-         racket/hash
-         racket/promise
          (prefix-in s: scribble/core)
-         (prefix-in s: scribble/html-properties)
-         (prefix-in s: scribble/latex-properties)
          (prefix-in s: scribble/decode)
          pict
          ppict/pict
          ppict/zone
-         ppict/align
          "style.rkt"
-         "content.rkt"
-         "block.rkt"
          "scribble.rkt"
          "layer.rkt"
          "part.rkt")

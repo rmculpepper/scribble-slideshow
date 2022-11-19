@@ -7,7 +7,6 @@
          (prefix-in s: scribble/decode)
          (only-in pict pict?)
          "private/style.rkt"
-         "private/content.rkt"
          "private/block.rkt"
          "private/slide.rkt")
 

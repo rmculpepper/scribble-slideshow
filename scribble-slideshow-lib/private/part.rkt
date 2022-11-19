@@ -3,14 +3,8 @@
 
 #lang racket/base
 (require racket/match
-         racket/list
          racket/class
-         racket/hash
          scribble/core
-         scribble/html-properties
-         scribble/latex-properties
-         scribble/decode
-         (only-in pict inset)
          "style.rkt"
          "layer.rkt"
          "block.rkt"
