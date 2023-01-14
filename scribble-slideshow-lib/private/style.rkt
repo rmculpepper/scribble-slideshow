@@ -388,6 +388,8 @@
    ;; Custom styles:
    'slide-title `((iset text-base ,TITLE-BASE text-size ,TITLE-SIZE color ,TITLE-COLOR))
 
+   'shrinkwrap `((iset block-width +inf.0))
+
    ;; ----------------------------------------
    ;; Default Property Handlers
    '(handlers paragraph)
