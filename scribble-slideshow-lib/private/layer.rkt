@@ -132,9 +132,12 @@
 
     ;; combine-picts : (Listof Pict) LayerPre -> Pict
     (define/public (combine-picts ps lpre istyle nstyle)
+      (define debug (or (hash-ref istyle 'debug #f) null))
       (define-values (p _newsep) (send placer compose-elements ps))
       (let* ([p (pre-decorate p)]
-             [p (inset-to/align p #f lpre 'ct)])
+             [p (if (memq 'layer debug) (frame #:segment 20 #:color "pink" p) p)]
+             [p (inset-to/align p #f lpre 'ct)]
+             [p (if (memq 'layer debug) (frame #:segment 20 #:color "purple" p) p)])
         (apply-layer-styles p istyle nstyle)))
 
     (define/public (pre-decorate p) p) ;; FIXME?
