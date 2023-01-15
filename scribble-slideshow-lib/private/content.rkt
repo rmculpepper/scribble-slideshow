@@ -8,6 +8,7 @@
          racket/format
          (prefix-in s: scribble/core)
          pict pict/convert
+         file/convertible
          "style.rkt"
          "linebreak.rkt")
 (provide (all-defined-out))
@@ -190,7 +191,16 @@
                                       (s:part-relative-element-content e ri))
                                     acc istyle))]
              [else (loop ((s:part-relative-element-plain e)) acc istyle)])]
-      [(? pict-convertible?) (loop (pict-convert content) acc istyle)]
+      [(? pict-convertible?)
+       (loop (parameterize ((current-istyle istyle))
+               (pict-convert content))
+             acc istyle)]
+      [(? convertible?)
+       (loop (parameterize ((current-istyle istyle))
+               (or (convert content 'scribble-content #f)
+                   (convert content 'text #f)
+                   (format "~.s" content)))
+             acc istyle)]
       [(? list? content)
        (for/fold ([acc acc]) ([part (in-list content)])
          (loop part acc istyle))]
