@@ -143,8 +143,11 @@
     (define/public (pre-decorate p) p) ;; FIXME?
     ))
 
+;; FIXME: add separate layer, etc styles for margin, padding, etc
 (define (prep-layer-styles istyle nstyle)
-  (prep-block-styles istyle nstyle))
+  #;(prep-block-styles istyle nstyle)
+  istyle)
 
 (define (apply-layer-styles p istyle nstyle)
-  (apply-block-styles p istyle nstyle))
+  #;(apply-block-styles p istyle nstyle)
+  p)
