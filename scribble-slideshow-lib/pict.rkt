@@ -7,6 +7,7 @@
          (prefix-in s: scribble/decode)
          (only-in pict pict?)
          "private/style.rkt"
+         "private/content.rkt"
          "private/block.rkt"
          "private/slide.rkt")
 
@@ -33,6 +34,9 @@
            (-> (-> pict? pict?) any)]
           [elem-post-property
            (-> (-> pict? pict?) any)])
+
+         late-content?
+         late-content
 
          layer
          slide-layer

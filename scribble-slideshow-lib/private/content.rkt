@@ -383,3 +383,18 @@
        (glue-loop is acc (cons gp ps) (+ w gw) (+ str gstr) (+ shr gshr))]
       [_ (loop is (cons (Glue (apply hbl-append 0 ps) w str shr) acc))]))
   (loop is null))
+
+;; ------------------------------------------------------------
+
+(struct late-content (proc)
+  #:constructor-name make-late-content
+  #:omit-define-syntaxes
+  #:property prop:convertible
+  (lambda (self request default)
+    (define c ((late-content-proc self)))
+    (cond [(eq? request 'scribble-content) c]
+          [(convertible? c) (convert c request default)]
+          [else default])))
+
+(define-syntax-rule (late-content c ...)
+  (make-late-content (lambda () c ...)))
