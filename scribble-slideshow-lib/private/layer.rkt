@@ -121,7 +121,7 @@
 
     (define/override (update-style istyle)
       (let-values ([(w h x y) (send zone get-zone (blank))])
-        (let ([istyle (hash-set* istyle 'layer-width w 'block-width w)])
+        (let ([istyle (hash-set* istyle 'layer-width w 'layer-height h 'block-width w)])
           (let-values ([(istyle nstyle) (super update-style istyle)])
             (values (prep-layer-styles istyle nstyle) nstyle)))))
 
@@ -145,9 +145,7 @@
 
 ;; FIXME: add separate layer, etc styles for margin, padding, etc
 (define (prep-layer-styles istyle nstyle)
-  #;(prep-block-styles istyle nstyle)
-  istyle)
+  (prep-block-styles istyle nstyle))
 
 (define (apply-layer-styles p istyle nstyle)
-  #;(apply-block-styles p istyle nstyle)
-  p)
+  (apply-block-styles p istyle nstyle))

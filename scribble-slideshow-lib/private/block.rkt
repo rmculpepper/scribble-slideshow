@@ -359,7 +359,6 @@
 (define (apply-block-styles p istyle nstyle)
   (define-values (ml mt mr mb) (get-block-margins nstyle))
   (define-values (pl pt pr pb) (get-block-padding nstyle))
-  (define istyle* (istyle-adjust-block-width istyle (- 0 ml mr pl pr)))
   (let* ([p (apply-block-styles/pre-padding p istyle nstyle)]
          [p (inset p pl pt pr pb)]
          [p (apply-block-styles/post-padding p istyle nstyle)]
