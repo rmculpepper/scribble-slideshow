@@ -506,8 +506,9 @@ staging}.
    (slide-layer 'lc (coord-zone 0.2 0 0.8 1) #:base 'main))
 @(define side-layer
    (slide-layer 'rb
-                #:post-decorate frame
-                #:style (hasheq 'text-size 20 'color "blue")))
+                #:style (style-diffs
+                         `((iset text-size 20 color "blue")
+                           (nset block-post ,(list frame))))))
 
 @title{An enumeration of ponderous considerations}
 
