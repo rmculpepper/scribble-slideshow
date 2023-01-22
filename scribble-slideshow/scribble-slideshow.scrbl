@@ -78,6 +78,16 @@ The @racketmodname[scribble-slideshow] @emph{library} provides functions like
 @s-tech{pre-flow} into @p-tech{picts} and emit slides from Scribble
 @s-tech{parts}, respectively.
 
+@slides-example|{
+#lang scribble-slideshow
+@(require scribble/base)
+
+@title{Minimal Example}
+
+This is a @emph{minimal example},
+a document that creates a single slide.
+}|
+
 See the @hyperlink[(format "~a/scribble-slideshow/example" repo)]{scribble-slideshow/examples}
 directory for extended, runnable examples.
 
@@ -180,12 +190,18 @@ slides for that part of the document.
 @subsection[#:tag "style"]{Styles}
 
 The translation from Scribble structures to picts and slides is controlled by
-the current @deftech{sp-style} (Scribble to Pict style), which is represented by
-an immutable hash with symbol keys. The hash contains two kinds of data:
+the current @deftech{sp-style} (Scribble to Pict style), which contains three
+kinds of data:
 @itemlist[
 
-@item{settings that directly affect the generation of picts from Scribble data,
-such as the @racket['text-size] key which determines the current font size, and}
+@item{@emph{inherited} sp-style settings with symbolic keys, which directly
+affect the generation of picts from Scribble data, such as the
+@racket['text-size] key which determines the current font size, and}
+
+@item{@emph{non-inherited} sp-style settings with symbolic keys, which directly
+affect the generation of picts from a single Scribble structure, such as the
+@racket['block-padding] key which determines extra space added around a block
+pict, and}
 
 @item{a @tech{style mapping} (stored in the the @racket['styles] key) which
 translates a Scribble @s-tech{style name} to an update of the other
