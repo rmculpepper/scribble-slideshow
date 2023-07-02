@@ -18,7 +18,7 @@
 ;; collection info
 
 (define name "scribble-slideshow")
-(define scribblings '(("scribble-slideshow.scrbl" ())))
+(define scribblings '(("scribble-slideshow.scrbl" () ("Scribble Libraries"))))
 
 (define compile-omit-paths '("examples" "misc"))
 (define test-omit-paths '("examples" "misc"))
